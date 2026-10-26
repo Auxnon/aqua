@@ -93,6 +93,10 @@ cargo install cargo-ndk
 adb install app/build/outputs/apk/debug/app-debug.apk
 ```
 
+With [`just`](https://github.com/casey/just), `just install` does the build and
+install in one step (`just` lists the other recipes: `run`, `release`, `test`,
+`paint-test`, `bench`, `logs`, `clean`).
+
 Gradle runs on JDK 21 (`gradle/gradle-daemon-jvm.properties`). It finds an
 installed JDK 21 or downloads one.
 
