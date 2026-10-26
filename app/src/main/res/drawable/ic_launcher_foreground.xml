@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A watercolour drop: soft wash with a darker dried edge. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#B33A6FB0"
+        android:strokeColor="#FF2E5C99"
+        android:strokeWidth="2.2"
+        android:pathData="M54,28 C54,28 37,48 37,61 C37,71 44.6,79 54,79 C63.4,79 71,71 71,61 C71,48 54,28 54,28 Z" />
+    <path
+        android:fillColor="#668FD3CB"
+        android:pathData="M47,62 C47,56 51,51 53,48 C52,54 51,58 51,62 C51,66 53,69 56,71 C51,71 47,67 47,62 Z" />
+</vector>

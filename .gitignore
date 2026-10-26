@@ -1,0 +1,10 @@
+.gradle/
+build/
+local.properties
+.idea/
+*.iml
+.kotlin/
+captures/
+engine/target/
+app/src/main/jniLibs/
+paint_out/
