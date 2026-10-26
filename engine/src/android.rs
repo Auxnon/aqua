@@ -6,7 +6,7 @@
 use std::ffi::c_void;
 use std::path::PathBuf;
 use std::ptr::NonNull;
-use std::sync::mpsc::{Receiver, Sender, SyncSender, TryRecvError, channel, sync_channel};
+use std::sync::mpsc::{Receiver, Sender, SyncSender, RecvTimeoutError, channel, sync_channel};
 use std::thread::JoinHandle;
 
 use jni::JNIEnv;
@@ -82,10 +82,12 @@ fn engine_thread(rx: Receiver<Cmd>) {
     loop {
         let animating = engine.presenter.is_some() && engine.wants_frame();
         let first = if animating {
-            match rx.try_recv() {
+            // Frames are paced by the display (Fifo present), or by frame_delay
+            // while paint is only drying; commands wake the thread either way.
+            match rx.recv_timeout(engine.frame_delay()) {
                 Ok(c) => Some(c),
-                Err(TryRecvError::Empty) => None,
-                Err(TryRecvError::Disconnected) => break,
+                Err(RecvTimeoutError::Timeout) => None,
+                Err(RecvTimeoutError::Disconnected) => break,
             }
         } else {
             match rx.recv() {
@@ -103,7 +105,7 @@ fn engine_thread(rx: Receiver<Cmd>) {
         if quit {
             break;
         }
-        if engine.presenter.is_some() && engine.wants_frame() {
+        if engine.presenter.is_some() && engine.wants_frame() && engine.frame_delay().is_zero() {
             engine.frame();
         }
     }

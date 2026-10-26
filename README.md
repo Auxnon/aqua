@@ -69,13 +69,21 @@ What keeps it fast:
 - Only 32×32 tiles near wet paint are simulated, using a tile list for dispatch
   and a mask for neighbour lookups. Only the tiles that changed are
   recomposited.
+- Tiles drop out of the simulation as they dry. A per-tile wetness probe runs
+  every 20 steps. Once a tile is dry and no wet paint is within two tiles, its
+  last suspended pigment settles and it stops being simulated. It comes back if
+  water spreads towards it again. A drying wash gets cheaper as it dries, instead
+  of costing the same until the last wet spot is gone.
+- While paint is only drying (no touch, no pan or zoom), frames drop to about
+  30 per second. The simulation takes more steps per frame, so paint dries at the
+  same speed. Touching the screen brings back the display's full rate.
 - Layers below and above the active one are cached as one KM reflectance
   texture and one (reflectance, transmittance) pair. A frame only composites the
   active layer between them.
 - All the dabs in a frame go out in one instanced draw with additive or
   multiplicative blending.
-- Once a layer has dried (checked with an asynchronous GPU reduction), its wet
-  state is released and the engine thread goes idle until the next touch.
+- Once a whole layer has dried, its wet state is released and the engine
+  thread goes idle until the next touch.
 - Undo stores 256×256 tiles copied on the GPU, captured lazily the first time
   each tile is written. This works because the simulation only touches active
   tiles.
@@ -108,7 +116,7 @@ The engine runs headless on any desktop GPU:
 cd engine
 cargo test --release --lib
 cargo run --release --example paint_test -- /tmp/aqua_out   # writes PNGs of every brush and effect
-cargo run --release --example bench                         # simulation timings at 2048×2048
+cargo run --release --example bench                         # simulation timings at 2048×2048, and a wash drying
 ```
 
 Tuning constants for the physics are in `Tuning::default()` in

@@ -3,7 +3,7 @@
 //! `android.rs`); tests drive it headless.
 
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use bytemuck::{Pod, Zeroable};
 
@@ -45,6 +45,12 @@ impl Default for View {
     }
 }
 
+/// While paint is only drying (no touch, no view change), frames are spaced this
+/// far apart. The simulation keeps its pace by taking more steps per frame.
+const DRYING_FRAME: Duration = Duration::from_millis(33);
+/// How long after the last touch frames stay at the display's full rate.
+const INPUT_GRACE: Duration = Duration::from_millis(400);
+
 pub struct Engine {
     pub gpu: Arc<Gpu>,
     pub pipes: Arc<Pipelines>,
@@ -54,6 +60,8 @@ pub struct Engine {
     pub brush: BrushSettings,
     last_frame: Option<Instant>,
     step_debt: f32,
+    last_input: Option<Instant>,
+    /// Set by anything outside the frame loop that changes what is on screen.
     pub needs_present: bool,
 }
 
@@ -69,6 +77,7 @@ impl Engine {
             brush: BrushSettings::default(),
             last_frame: None,
             step_debt: 0.0,
+            last_input: None,
             needs_present: true,
         }
     }
@@ -139,6 +148,7 @@ impl Engine {
 
     pub fn set_view(&mut self, v: View) {
         self.view = v;
+        self.last_input = Some(Instant::now());
         self.needs_present = true;
     }
 
@@ -159,6 +169,7 @@ impl Engine {
                 }
             }
         }
+        self.last_input = Some(Instant::now());
         self.needs_present = true;
     }
 
@@ -167,23 +178,42 @@ impl Engine {
         self.needs_present || self.canvas.as_ref().is_some_and(|c| c.needs_update())
     }
 
+    /// True while the user is interacting, or something outside the simulation
+    /// changed the picture: frames then follow the display rate.
+    fn interactive(&self) -> bool {
+        self.needs_present
+            || self.canvas.as_ref().is_some_and(|c| c.stroking())
+            || self.last_input.is_some_and(|t| t.elapsed() < INPUT_GRACE)
+    }
+
+    /// How long to wait before the next `frame`. Zero while interactive; while paint
+    /// is only drying, frames are spaced `DRYING_FRAME` apart to save power.
+    pub fn frame_delay(&self) -> Duration {
+        match self.last_frame {
+            Some(t) if !self.interactive() => DRYING_FRAME.saturating_sub(t.elapsed()),
+            _ => Duration::ZERO,
+        }
+    }
+
     /// Steps the simulation by the elapsed wall time and presents. Returns `wants_frame()`.
     pub fn frame(&mut self) -> bool {
         let now = Instant::now();
         let dt = self.last_frame.map_or(1.0 / 60.0, |t| (now - t).as_secs_f32()).min(0.1);
         self.last_frame = Some(now);
+        // At most two steps a frame (four at the drying frame rate): on a slow GPU the
+        // paint dries a little slower instead of the frame rate spiralling down.
+        let max_steps = if self.interactive() { 2 } else { 4 };
+        let mut changed = self.needs_present;
         if let Some(c) = self.canvas.as_mut() {
             self.step_debt += dt * STEPS_PER_SECOND;
-            // At most two steps a frame: on a slow GPU the paint dries a little slower
-            // instead of the frame rate spiralling down.
-            let steps = (self.step_debt.floor() as u32).min(2);
+            let steps = (self.step_debt.floor() as u32).min(max_steps);
             self.step_debt = (self.step_debt - steps as f32).min(1.0);
             if c.needs_update() || steps > 0 && c.any_wet() {
                 c.update(steps);
-                self.needs_present = true;
+                changed = true;
             }
         }
-        if self.needs_present {
+        if changed {
             self.present();
         }
         let more = self.wants_frame();

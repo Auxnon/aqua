@@ -22,6 +22,13 @@ pub const STEPS_PER_SECOND: f32 = 120.0;
 /// How far beyond a stroke water and blooms may travel, in pixels.
 const WET_MARGIN: i32 = 64;
 const MAX_LAYERS: usize = 24;
+/// Below this maximum wetness (4 * surface water + paper saturation) paper counts as dry.
+const DRY: f32 = 0.02;
+/// Dry tiles stay simulated while wet paint is within this many tiles, so water
+/// spreading between two probes never runs into a retired tile.
+const RETIRE_DISTANCE: i32 = 2;
+/// Simulation steps between wetness probes.
+const PROBE_STEPS: u32 = 20;
 
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
@@ -187,23 +194,41 @@ impl TileSet {
         }
     }
 
-    fn activate(&mut self, r: &IRect) {
+    /// Grid indices of the tiles overlapping `r`.
+    fn indices(&self, r: &IRect) -> impl Iterator<Item = (u32, u32)> + use<> {
         let r = r.intersect(&IRect::full(self.tw * SIM_TILE, self.th * SIM_TILE));
-        if r.is_empty() {
-            return;
+        let (x0, y0, x1, y1) = if r.is_empty() {
+            (0, 0, 0, 0)
+        } else {
+            (r.x0 as u32 / SIM_TILE, r.y0 as u32 / SIM_TILE, (r.x1 as u32).div_ceil(SIM_TILE).min(self.tw), (r.y1 as u32).div_ceil(SIM_TILE).min(self.th))
+        };
+        (y0..y1).flat_map(move |ty| (x0..x1).map(move |tx| (tx, ty)))
+    }
+
+    fn activate(&mut self, r: &IRect) {
+        for (tx, ty) in self.indices(r) {
+            self.activate_tile(tx, ty);
         }
-        let (x0, y0) = (r.x0 as u32 / SIM_TILE, r.y0 as u32 / SIM_TILE);
-        let (x1, y1) = ((r.x1 as u32).div_ceil(SIM_TILE), (r.y1 as u32).div_ceil(SIM_TILE));
-        for ty in y0..y1.min(self.th) {
-            for tx in x0..x1.min(self.tw) {
-                let i = (ty * self.tw + tx) as usize;
-                if !self.active[i] {
-                    self.active[i] = true;
-                    self.list.push(tx | (ty << 16));
-                    self.dirty = true;
-                }
-            }
+    }
+
+    fn activate_tile(&mut self, tx: u32, ty: u32) {
+        let i = (ty * self.tw + tx) as usize;
+        if !self.active[i] {
+            self.active[i] = true;
+            self.list.push(tx | (ty << 16));
+            self.dirty = true;
         }
+    }
+
+    /// Unmarks the given tiles (packed `tx | ty << 16`, as in `list`).
+    fn remove(&mut self, tiles: &[u32]) {
+        for &t in tiles {
+            self.active[((t >> 16) * self.tw + (t & 0xffff)) as usize] = false;
+        }
+        let active = &self.active;
+        let tw = self.tw;
+        self.list.retain(|&t| active[((t >> 16) * tw + (t & 0xffff)) as usize]);
+        self.dirty = true;
     }
 
     /// Unmarks everything (used for the per-frame dirty set).
@@ -238,9 +263,20 @@ impl TileSet {
 }
 
 pub struct WetState {
-    /// Bounding box of the active tiles.
+    /// Bounding box of every tile this wet layer may simulate (`reach`).
     pub rect: IRect,
+    /// Tiles simulated right now: the part of `reach` near wet paint. Outside them
+    /// the wet textures are zero and each ping-pong pair holds the same image.
     tiles: TileSet,
+    /// Every tile painted into (plus margin) since the layer got wet. Retired
+    /// tiles may come back from here if water spreads towards them again.
+    reach: Vec<bool>,
+    /// Frame each tile was last activated in, so a probe never retires a tile
+    /// painted into after the probe was taken.
+    stamp: Vec<u32>,
+    frame: u32,
+    probe_frame: u32,
+    steps_since_probe: u32,
     pub water: Tex,
     water_alt: Tex,
     flux: Tex,
@@ -252,7 +288,6 @@ pub struct WetState {
     dep_alt: Tex,
     fix_alt: Tex,
     probe: Probe,
-    frames_since_probe: u32,
     /// Frames since paint last touched this layer.
     idle_frames: u32,
     pub wetness: f32,
@@ -262,9 +297,17 @@ impl WetState {
     fn new(gpu: &Gpu, layer: &Layer, enc: &mut wgpu::CommandEncoder) -> Self {
         let d = &gpu.device;
         let (w, h) = (layer.dep.width(), layer.dep.height());
+        let tiles = TileSet::new(d, w, h);
+        let n = (tiles.tw * tiles.th) as usize;
         let s = Self {
             rect: IRect::EMPTY,
-            tiles: TileSet::new(d, w, h),
+            reach: vec![false; n],
+            stamp: vec![0; n],
+            frame: 0,
+            probe_frame: 0,
+            steps_since_probe: 0,
+            probe: Probe::new(&gpu.device, n),
+            tiles,
             water: Tex::sim(d, w, h, "water"),
             water_alt: Tex::sim(d, w, h, "water'"),
             flux: Tex::sim(d, w, h, "flux"),
@@ -275,8 +318,6 @@ impl WetState {
             ink_alt: Tex::sim(d, w, h, "ink'"),
             dep_alt: Tex::sim(d, w, h, "dep'"),
             fix_alt: Tex::sim(d, w, h, "fix'"),
-            probe: Probe::new(&gpu.device),
-            frames_since_probe: 0,
             idle_frames: 0,
             wetness: 1.0,
         };
@@ -297,7 +338,43 @@ impl WetState {
             return;
         }
         self.rect = self.rect.union(&r);
-        self.tiles.activate(&r);
+        let indices: Vec<_> = self.tiles.indices(&r).collect();
+        for (tx, ty) in indices {
+            let i = (ty * self.tiles.tw + tx) as usize;
+            self.reach[i] = true;
+            self.stamp[i] = self.frame;
+            self.tiles.activate_tile(tx, ty);
+        }
+    }
+
+    /// Decides from a per-tile wetness probe which tiles to simulate: the reach
+    /// within `RETIRE_DISTANCE` of wet tiles, plus anything painted since the probe.
+    /// Returns (tiles to retire, tiles to bring back).
+    fn plan_tiles(&self, wet_tiles: &[f32]) -> (Vec<u32>, Vec<u32>) {
+        let (tw, th) = (self.tiles.tw as i32, self.tiles.th as i32);
+        let mut near = vec![false; wet_tiles.len()];
+        for ty in 0..th {
+            for tx in 0..tw {
+                if wet_tiles[(ty * tw + tx) as usize] < DRY {
+                    continue;
+                }
+                for y in (ty - RETIRE_DISTANCE).max(0)..(ty + RETIRE_DISTANCE + 1).min(th) {
+                    for x in (tx - RETIRE_DISTANCE).max(0)..(tx + RETIRE_DISTANCE + 1).min(tw) {
+                        near[(y * tw + x) as usize] = true;
+                    }
+                }
+            }
+        }
+        let (mut retire, mut revive) = (Vec::new(), Vec::new());
+        for (i, &near) in near.iter().enumerate() {
+            let t = (i as u32 % self.tiles.tw) | ((i as u32 / self.tiles.tw) << 16);
+            if self.tiles.active[i] && !near && self.stamp[i] < self.probe_frame {
+                retire.push(t);
+            } else if !self.tiles.active[i] && near && self.reach[i] {
+                revive.push(t);
+            }
+        }
+        (retire, revive)
     }
 }
 
@@ -314,17 +391,18 @@ const PROBE_READY: u8 = 2;
 const PROBE_MAPPING: u8 = 3;
 
 impl Probe {
-    fn new(device: &wgpu::Device) -> Self {
+    fn new(device: &wgpu::Device, tiles: usize) -> Self {
+        let size = (tiles * 4) as u64;
         Self {
             storage: device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("wet probe"),
-                size: 4,
+                size,
                 usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC | wgpu::BufferUsages::COPY_DST,
                 mapped_at_creation: false,
             }),
             readback: device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("wet probe readback"),
-                size: 4,
+                size,
                 usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
                 mapped_at_creation: false,
             }),
@@ -578,6 +656,11 @@ impl Canvas {
                 drying: l.drying,
             })
             .collect()
+    }
+
+    /// Number of 32x32 tiles simulated across all wet layers.
+    pub fn sim_tiles(&self) -> usize {
+        self.layers.iter().filter_map(|l| l.wet.as_ref()).map(|w| w.tiles.list.len()).sum()
     }
 
     pub fn any_wet(&self) -> bool {
@@ -908,7 +991,7 @@ impl Canvas {
             self.dirty_tiles.extend(&self.layers[i].wet.as_ref().unwrap().tiles);
             other_wet |= i != self.active;
         }
-        self.probe_wetness(&mut enc);
+        self.probe_wetness(steps, &mut enc);
 
         // 3. Composite.
         if self.structure_dirty {
@@ -1080,35 +1163,38 @@ impl Canvas {
         std::mem::swap(&mut layer.fix, &mut ws.fix_alt);
     }
 
-    fn probe_wetness(&mut self, enc: &mut wgpu::CommandEncoder) {
-        let full = IRect::full(self.w, self.h);
+    fn probe_wetness(&mut self, steps: u32, enc: &mut wgpu::CommandEncoder) {
         for i in 0..self.layers.len() {
             let Some(ws) = self.layers[i].wet.as_mut() else { continue };
-            ws.frames_since_probe += 1;
+            ws.frame += 1;
             ws.idle_frames += 1;
-            if ws.frames_since_probe < 20 || ws.probe.state.load(Ordering::Acquire) != PROBE_IDLE {
+            ws.steps_since_probe += steps;
+            // Counted in steps, not frames, so water travels the same distance
+            // between probes whatever the frame rate.
+            if ws.steps_since_probe < PROBE_STEPS || ws.probe.state.load(Ordering::Acquire) != PROBE_IDLE {
                 continue;
             }
-            ws.frames_since_probe = 0;
-            let r = ws.rect.intersect(&full);
-            let mut params: SimParams = Zeroable::zeroed();
-            params.origin = [r.x0, r.y0];
-            params.size = [r.w() as i32, r.h() as i32];
-            let u = self.ring.push(&params);
-            self.gpu.queue.write_buffer(&ws.probe.storage, 0, &[0u8; 4]);
-            let bg = bind(&self.gpu.device, &self.pipes.wet_max, &[
+            ws.steps_since_probe = 0;
+            ws.probe_frame = ws.frame;
+            ws.tiles.flush(&self.gpu);
+            let u = self.ring.push(&self.sim_params(&IRect::full(self.w, self.h), 1.0));
+            let ws = self.layers[i].wet.as_mut().unwrap();
+            enc.clear_buffer(&ws.probe.storage, 0, None);
+            let bg = bind(&self.gpu.device, &self.pipes.wet_tiles, &[
                 (0, self.ring.res(u)),
                 (1, tv(&ws.water)),
                 (2, ws.probe.storage.as_entire_binding()),
+                (20, ws.tiles.buf.as_entire_binding()),
             ]);
-            dispatch(enc, &self.pipes.wet_max, &bg, &r);
-            enc.copy_buffer_to_buffer(&ws.probe.storage, 0, &ws.probe.readback, 0, 4);
+            dispatch_tiles(enc, &self.pipes.wet_tiles, &bg, ws.tiles.list.len() as u32);
+            enc.copy_buffer_to_buffer(&ws.probe.storage, 0, &ws.probe.readback, 0, ws.probe.storage.size());
             ws.probe.state.store(PROBE_PENDING, Ordering::Release);
         }
     }
 
     fn after_submit(&mut self) {
         let mut to_dry = Vec::new();
+        let mut plans = Vec::new();
         for (i, l) in self.layers.iter_mut().enumerate() {
             let Some(ws) = l.wet.as_mut() else { continue };
             match ws.probe.state.load(Ordering::Acquire) {
@@ -1121,17 +1207,27 @@ impl Canvas {
                     });
                 }
                 PROBE_READY => {
-                    let v = {
+                    let wet_tiles: Option<Vec<f32>> = {
                         let view = ws.probe.readback.slice(..).get_mapped_range().ok();
-                        view.map(|b| f32::from_bits(u32::from_le_bytes([b[0], b[1], b[2], b[3]])))
+                        view.map(|b| b.as_chunks::<4>().0.iter().map(|c| f32::from_bits(u32::from_le_bytes(*c))).collect())
                     };
                     ws.probe.readback.unmap();
                     ws.probe.state.store(PROBE_IDLE, Ordering::Release);
-                    if let Some(v) = v {
-                        ws.wetness = v;
+                    if let Some(wet_tiles) = wet_tiles {
+                        ws.wetness = wet_tiles.iter().fold(0.0, |a, &b| a.max(b));
                         // Dry enough and nobody is painting into it: release the wet state.
-                        if v < 0.02 && ws.idle_frames > 30 {
+                        if ws.wetness < DRY && ws.idle_frames > 30 {
                             to_dry.push(i);
+                        } else {
+                            let (retire, revive) = ws.plan_tiles(&wet_tiles);
+                            if !revive.is_empty() {
+                                for &t in &revive {
+                                    ws.tiles.activate_tile(t & 0xffff, t >> 16);
+                                }
+                            }
+                            if !retire.is_empty() {
+                                plans.push((i, retire));
+                            }
                         }
                     }
                 }
@@ -1139,8 +1235,14 @@ impl Canvas {
             }
         }
         let _ = self.gpu.device.poll(wgpu::PollType::Poll);
-        if !to_dry.is_empty() && self.stroke.is_none() {
-            let mut enc = self.gpu.device.create_command_encoder(&Default::default());
+        if (to_dry.is_empty() || self.stroke.is_some()) && plans.is_empty() {
+            return;
+        }
+        let mut enc = self.gpu.device.create_command_encoder(&Default::default());
+        for (i, retire) in plans {
+            self.retire_tiles(i, &retire, &mut enc);
+        }
+        if self.stroke.is_none() {
             for i in to_dry {
                 // Drying on its own is part of the stroke that made it wet: same undo entry.
                 if let Some(r) = self.layers[i].wet.as_ref().map(|w| w.rect) {
@@ -1148,9 +1250,56 @@ impl Canvas {
                 }
                 self.bake(i, &mut enc);
             }
-            self.ring.flush(&self.gpu.queue);
-            self.gpu.queue.submit([enc.finish()]);
         }
+        self.ring.flush(&self.gpu.queue);
+        self.gpu.queue.submit([enc.finish()]);
+    }
+
+    /// Stops simulating tiles that have dried: settles what they still hold into
+    /// the layer, then zeroes their wet state so they look like never-wet paper.
+    fn retire_tiles(&mut self, index: usize, retire: &[u32], enc: &mut wgpu::CommandEncoder) {
+        let full = IRect::full(self.w, self.h);
+        let rects: Vec<IRect> = retire
+            .iter()
+            .map(|&t| {
+                let (x, y) = ((t & 0xffff) as i32 * SIM_TILE as i32, (t >> 16) as i32 * SIM_TILE as i32);
+                IRect::new(x, y, x + SIM_TILE as i32, y + SIM_TILE as i32).intersect(&full)
+            })
+            .collect();
+        for r in &rects {
+            self.capture(index, r, enc);
+        }
+        let list = self.gpu.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("retired tiles"),
+            size: (retire.len() * 4) as u64,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        self.gpu.queue.write_buffer(&list, 0, bytemuck::cast_slice(retire));
+        let u = self.ring.push(&self.sim_params(&full, 1.0));
+        let layer = &mut self.layers[index];
+        let ws = layer.wet.as_mut().unwrap();
+        let bg = bind(&self.gpu.device, &self.pipes.retire, &[
+            (0, self.ring.res(u)),
+            (1, tv(&ws.pig)),
+            (2, tv(&ws.ink)),
+            (3, tv(&layer.dep)),
+            (4, tv(&layer.fix)),
+            (5, tv(&ws.dep_alt)),
+            (6, tv(&ws.fix_alt)),
+            (20, list.as_entire_binding()),
+        ]);
+        dispatch_tiles(enc, &self.pipes.retire, &bg, retire.len() as u32);
+        for r in &rects {
+            let (o, w, h) = ((r.x0 as u32, r.y0 as u32), r.w(), r.h());
+            copy_rect(enc, &ws.dep_alt.tex, &layer.dep.tex, o, o, w, h);
+            copy_rect(enc, &ws.fix_alt.tex, &layer.fix.tex, o, o, w, h);
+            for t in [&ws.water, &ws.water_alt, &ws.flux, &ws.flux_alt, &ws.pig, &ws.pig_alt, &ws.ink, &ws.ink_alt] {
+                copy_rect(enc, &self.zero_tile.tex, &t.tex, (0, 0), o, w, h);
+            }
+            self.pending_dirty = self.pending_dirty.union(r);
+        }
+        ws.tiles.remove(retire);
     }
 
     fn layer_uniform(&self, r: &IRect, l: Option<&Layer>, first: bool) -> LayerU {

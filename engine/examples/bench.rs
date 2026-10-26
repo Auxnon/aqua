@@ -37,10 +37,31 @@ fn main() {
         e.canvas.as_mut().unwrap().update(2);
     }
     run(&gpu, &mut e, "two diagonal strokes");
+
+    // Left to dry: dried tiles are retired, so frames get cheaper as the paint dries.
+    let mut t = std::time::Instant::now();
+    for frame in 1..=2400 {
+        let wet = e.canvas.as_mut().unwrap().update(2);
+        if frame % 300 == 0 || !wet {
+            let c = e.canvas.as_ref().unwrap();
+            let tiles = c.sim_tiles();
+            sync(&gpu, &e);
+            let ms = t.elapsed().as_secs_f64() * 1000.0 / 300.0;
+            println!("drying, {:>4.1} s simulated: {tiles:>4} tiles simulated, {ms:.2} ms/frame", frame as f32 * 2.0 / 120.0);
+            t = std::time::Instant::now();
+        }
+        if !wet {
+            println!("layer dry after {:.1} s", frame as f32 * 2.0 / 120.0);
+            break;
+        }
+    }
+}
+
+fn sync(gpu: &Gpu, e: &Engine) {
+    drop(read_pixel(gpu, &e.canvas.as_ref().unwrap().composite.tex, 0, 0));
 }
 
 fn run(gpu: &Gpu, e: &mut Engine, what: &str) {
-    let sync = |gpu: &Gpu, e: &Engine| drop(read_pixel(gpu, &e.canvas.as_ref().unwrap().composite.tex, 0, 0));
     sync(gpu, e);
     for steps in [1u32, 2] {
         let t = std::time::Instant::now();
