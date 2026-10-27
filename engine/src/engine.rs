@@ -47,6 +47,10 @@ impl Default for View {
 
 /// While paint is only drying (no touch, no view change), frames are spaced this
 /// far apart. The simulation keeps its pace by taking more steps per frame.
+/// Matches the Android window and Compose background exactly, so nothing blinks
+/// when the canvas surface comes and goes.
+const BACKGROUND_SRGB: [f32; 4] = [9.0 / 255.0, 9.0 / 255.0, 11.0 / 255.0, 1.0];
+
 const DRYING_FRAME: Duration = Duration::from_millis(33);
 /// How long after the last touch frames stay at the display's full rate.
 const INPUT_GRACE: Duration = Duration::from_millis(400);
@@ -237,8 +241,11 @@ impl Engine {
         self.needs_present = false;
         let target = frame.texture.create_view(&wgpu::TextureViewDescriptor::default());
         let mut enc = self.gpu.device.create_command_encoder(&Default::default());
-        let bg_color = [0.035, 0.035, 0.04, 1.0];
-        let clear = wgpu::Color { r: bg_color[0] as f64, g: bg_color[1] as f64, b: bg_color[2] as f64, a: 1.0 };
+        // The app's background (#09090B), in linear light: the shader works in
+        // linear and encodes to sRGB on the way out, like an sRGB surface does.
+        let bg_color = BACKGROUND_SRGB.map(crate::pigment::srgb_to_linear);
+        let c = if p.encode_srgb { BACKGROUND_SRGB } else { bg_color };
+        let clear = wgpu::Color { r: c[0] as f64, g: c[1] as f64, b: c[2] as f64, a: 1.0 };
         let atts = color_attachment(&target, clear);
         match self.canvas.as_ref() {
             Some(c) => {
