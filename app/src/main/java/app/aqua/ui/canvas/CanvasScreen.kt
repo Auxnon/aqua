@@ -69,6 +69,7 @@ import app.aqua.ui.Arrival
 import app.aqua.ui.CanvasFrame
 import app.aqua.ui.theme.AquaColors
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -156,13 +157,16 @@ fun CanvasScreen(dir: File, onExit: (Arrival?) -> Unit) {
         if (exiting) return
         exiting = true
         panel = Panel.None
-        scope.launch(Dispatchers.IO) {
+        // Not cancellable: this screen leaves composition partway through.
+        scope.launch(Dispatchers.IO + NonCancellable) {
             save()
-            Native.closeCanvas(engine)
             // Decoded here so the gallery can show it on its very first frame.
             val thumb = from?.let { BitmapFactory.decodeFile(File(dir, "thumb.png").path)?.asImageBitmap() }
             val arrival = if (from != null && thumb != null) Arrival(dir.path, from, thumb) else null
             withContext(Dispatchers.Main) { onExit(arrival) }
+            // Only once the gallery has taken over: closing earlier blanks the
+            // canvas surface while it's still on screen.
+            Native.closeCanvas(engine)
         }
     }
 
