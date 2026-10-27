@@ -16,6 +16,9 @@ object Native {
     /** canvasFromScreen affine (a, b, c, d, e, f) followed by the zoom factor. */
     @JvmStatic external fun setView(handle: Long, view: FloatArray)
 
+    /** Tips the paper: (x, y) is the downhill direction in canvas pixels' axes, length 0 (level) to 1 (steep). */
+    @JvmStatic external fun setTilt(handle: Long, x: Float, y: Float)
+
     /** See [BrushParams.toArray] for the layout. */
     @JvmStatic external fun setBrush(handle: Long, tool: Int, params: FloatArray)
 

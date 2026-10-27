@@ -62,6 +62,7 @@ struct SimParams {
     edge_drift: f32,
     chaos: f32,
     time: f32,
+    tilt: [f32; 2],
 }
 
 #[repr(C)]
@@ -487,6 +488,9 @@ pub struct Canvas {
     stroke_seed: u32,
     /// Simulation steps taken so far; drives the drifting flow noise.
     sim_steps: u32,
+    /// Which way the paper is tipped, in canvas space: the downhill direction,
+    /// with length 0 (flat) to 1 (steep). Wet paint runs and drips that way.
+    pub tilt: [f32; 2],
     pub undo: UndoStack,
     /// Bumped whenever pixels change; the UI uses it to know when to save.
     pub revision: u64,
@@ -528,6 +532,7 @@ impl Canvas {
             stroke: None,
             stroke_seed: 1,
             sim_steps: 0,
+            tilt: [0.0; 2],
             undo: UndoStack::new(Self::undo_budget(w, h)),
             revision: 0,
             w,
@@ -661,6 +666,14 @@ impl Canvas {
         if let Some(l) = self.layers.get_mut(index) {
             l.flow = flow.clamp(0.0, 1.0);
         }
+    }
+
+    /// Tips the paper: `x, y` is the downhill direction in canvas space, its
+    /// length how steep (clamped to 1).
+    pub fn set_tilt(&mut self, x: f32, y: f32) {
+        let len = (x * x + y * y).sqrt();
+        let k = if len > 1.0 { 1.0 / len } else { 1.0 };
+        self.tilt = [x * k, y * k];
     }
 
     /// Lets the resting brush soak paint into the paper (called once a frame).
@@ -989,6 +1002,7 @@ impl Canvas {
             edge_drift: t.edge_drift,
             chaos: 0.0,
             time: 0.0,
+            tilt: self.tilt,
         }
     }
 

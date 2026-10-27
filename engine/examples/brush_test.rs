@@ -180,5 +180,46 @@ fn main() {
     frame(&mut e);
     storage::export_png(e.canvas.as_mut().unwrap(), &out.join("eraser.png")).unwrap();
     undo_to_blank(&mut e, "eraser");
+
+    // Tipped paper: a wet wash, a puddle of clear water dropped into a wash, and
+    // India ink in water, painted with the paper tipped towards the bottom edge.
+    // Beads gather along the lower edges and run as drips.
+    e.new_canvas(700, 600, 0, 7);
+    e.canvas.as_mut().unwrap().set_tilt(0.0, 1.0);
+    let row = |x: f32, y: f32| (0..40).map(|i| InputPoint { x: x + i as f32 * 6.0, y, pressure: 0.9 }).collect::<Vec<_>>();
+    e.brush = BrushSettings { tool: Tool::Watercolor, size: 30.0, pigment: from_srgb([0.2, 0.35, 0.7]), water: 1.0, ..Default::default() };
+    for r in 0..3 {
+        draw(&mut e, &row(60.0, 80.0 + r as f32 * 40.0));
+    }
+    e.brush = BrushSettings { tool: Tool::Watercolor, size: 30.0, pigment: from_srgb([0.75, 0.2, 0.3]), water: 0.8, ..Default::default() };
+    draw(&mut e, &row(380.0, 80.0));
+    e.brush = BrushSettings { tool: Tool::Water, size: 30.0, water: 1.0, softness: 0.3, ..Default::default() };
+    for _ in 0..4 {
+        draw(&mut e, &row(380.0, 85.0));
+    }
+    e.brush = BrushSettings { tool: Tool::Water, size: 30.0, water: 1.0, softness: 0.3, ..Default::default() };
+    draw(&mut e, &row(380.0, 220.0));
+    e.brush = BrushSettings { tool: Tool::Ink, size: 5.0, pigment: black, load: 0.9, bleed: 1.0, softness: 0.05, bristle: 0.0, pressure_size: 0.8, ..Default::default() };
+    draw(&mut e, &row(380.0, 220.0));
+    // A puddle scrubbed into a green wash.
+    e.brush = BrushSettings { tool: Tool::Watercolor, size: 30.0, pigment: from_srgb([0.2, 0.55, 0.3]), water: 1.0, ..Default::default() };
+    draw(&mut e, &row(60.0, 300.0));
+    e.brush = BrushSettings { tool: Tool::Water, size: 30.0, water: 1.0, softness: 0.3, ..Default::default() };
+    for _ in 0..8 {
+        draw(&mut e, &row(60.0, 300.0));
+    }
+    water_stats(&e, "tilt +0 frames");
+    for k in 1..=480 {
+        frame(&mut e);
+        if k % 60 == 0 {
+            water_stats(&e, &format!("tilt +{k} frames"));
+        }
+        if k == 90 {
+            storage::export_png(e.canvas.as_mut().unwrap(), &out.join("tilt_wet.png")).unwrap();
+        }
+    }
+    dry(&mut e);
+    storage::export_png(e.canvas.as_mut().unwrap(), &out.join("tilt.png")).unwrap();
+    undo_to_blank(&mut e, "tilt");
     println!("wrote {}", out.display());
 }

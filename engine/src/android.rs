@@ -26,6 +26,7 @@ enum Cmd {
     Surface(Option<(NativeWindow, u32, u32)>, SyncSender<()>),
     Resize(u32, u32),
     View(View),
+    Tilt(f32, f32),
     Brush(BrushSettings),
     Stroke(i32, Vec<InputPoint>),
     NewCanvas(u32, u32, u32, u32, SyncSender<()>),
@@ -147,6 +148,11 @@ fn handle_cmd(engine: &mut Engine, window: &mut Option<NativeWindow>, c: Cmd) ->
         }
         Cmd::Resize(w, h) => engine.resize(w, h),
         Cmd::View(v) => engine.set_view(v),
+        Cmd::Tilt(x, y) => {
+            if let Some(c) = engine.canvas.as_mut() {
+                c.set_tilt(x, y);
+            }
+        }
         Cmd::Brush(b) => engine.brush = b,
         Cmd::Stroke(phase, pts) => engine.stroke(phase, &pts),
         Cmd::NewCanvas(w, h, kind, seed, reply) => {
@@ -326,6 +332,11 @@ pub extern "system" fn Java_app_aqua_engine_Native_setView(mut env: JNIEnv, _c: 
 }
 
 /// params: size, K r, K g, K b, S, load, water, softness, bristle, bleed, strength, pressureSize, pressureFlow, smoothing, splatter
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_app_aqua_engine_Native_setTilt(_env: JNIEnv, _c: JClass, h: jlong, x: jfloat, y: jfloat) {
+    send(h, Cmd::Tilt(x, y));
+}
+
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_app_aqua_engine_Native_setBrush(mut env: JNIEnv, _c: JClass, h: jlong, tool: jint, params: JFloatArray) {
     let p = floats(&mut env, &params);

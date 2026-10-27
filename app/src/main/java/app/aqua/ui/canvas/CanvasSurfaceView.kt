@@ -11,8 +11,10 @@ import app.aqua.engine.Native
 import app.aqua.ui.CanvasFrame
 import kotlin.math.abs
 import kotlin.math.atan2
+import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.math.min
+import kotlin.math.sin
 import kotlin.math.sqrt
 
 /** Pinching out below this fraction of the fitted size and letting go opens the gallery. */
@@ -42,6 +44,8 @@ class CanvasSurfaceView(context: Context, private val engine: Long) : SurfaceVie
     private var fitted = false
     private var fitScale = 1f
     private var overviewHint = false
+    private var tiltX = 0f
+    private var tiltY = 0f
     private val view = Matrix()
     private val inverse = Matrix()
     private val tmp = FloatArray(2)
@@ -104,6 +108,21 @@ class CanvasSurfaceView(context: Context, private val engine: Long) : SurfaceVie
         val v = FloatArray(9)
         inverse.getValues(v)
         Native.setView(engine, floatArrayOf(v[0], v[1], v[2], v[3], v[4], v[5], scale()))
+        if (tiltX != 0f || tiltY != 0f) pushTilt()
+    }
+
+    /** Tips the paper towards screen direction (x, y), length 0 (level) to 1 (steep). */
+    fun setTilt(x: Float, y: Float) {
+        tiltX = x
+        tiltY = y
+        pushTilt()
+    }
+
+    /** The paper turns with the view, so the downhill direction is turned back into canvas space. */
+    private fun pushTilt() {
+        val m = FloatArray(9).also { view.getValues(it) }
+        val a = -atan2(m[Matrix.MSKEW_Y], m[Matrix.MSCALE_X])
+        Native.setTilt(engine, tiltX * cos(a) - tiltY * sin(a), tiltX * sin(a) + tiltY * cos(a))
     }
 
     private fun pastOverview() = canvasW > 0 && scale() < fitScale * OVERVIEW_ZOOM

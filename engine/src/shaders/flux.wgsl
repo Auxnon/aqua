@@ -55,7 +55,21 @@ fn cockle(p: vec2<i32>) -> f32 {
 
 const COCKLE_HEIGHT: f32 = 16.0;
 
-fn pipe(p: vec2<i32>, q: vec2<i32>, h: f32, H: f32, old: f32) -> f32 {
+// Tipped paper. A thin film clings to the paper and stays put; water that has
+// gathered into a bead is pulled downhill, so a tipped wash slowly pools along its
+// lower edge until the bead breaks and runs as a drip.
+const TILT_SLOPE: f32 = 0.12;
+const TILT_HOLD: f32 = 0.06;
+
+fn tilt(p: vec2<i32>, q: vec2<i32>, h: f32) -> f32 {
+    return TILT_SLOPE * smoothstep(TILT_HOLD, TILT_HOLD * 4.0, h) * dot(P.tilt, vec2<f32>(q - p));
+}
+
+fn pipe(p: vec2<i32>, q: vec2<i32>, h: f32, H: f32, old: f32, comp: i32) -> f32 {
+    if (any(q < vec2<i32>(0)) || any(q >= P.canvas)) {
+        // Off the paper: a drip that reaches the lower edge runs off it.
+        return max(0.0, old * P.damping + P.dt * P.gravity * tilt(p, q, h));
+    }
     if (!inside(q)) {
         return 0.0;
     }
@@ -70,12 +84,29 @@ fn pipe(p: vec2<i32>, q: vec2<i32>, h: f32, H: f32, old: f32) -> f32 {
     let damping = mix(P.damping, 0.9, deep);
     // (A stronger pull than P.gravity is unstable in this scheme; momentum is not.)
     let gravity = P.gravity * g;
-    let slope = deep * COCKLE_HEIGHT * (cockle(p) - cockle(q));
+    let slope = deep * COCKLE_HEIGHT * (cockle(p) - cockle(q)) + tilt(p, q, max(h, wq.x));
     var f = max(0.0, old * damping + P.dt * gravity * (H - Hq + slope));
     // Surface tension: a thin film does not creep onto dry paper; a puddle does.
     // Where the channels run, the front breaks through sooner.
-    let q_wet = wq.x > EPS_WATER || wq.y > P.cap_threshold;
-    if (!q_wet && h * mix(1.0, g * 1.6, deep) < P.tension) {
+    var tension = P.tension;
+    let down = max(dot(P.tilt, vec2<f32>(q - p)), 0.0);
+    if (down > 0.0) {
+        // On tipped paper the lower edge holds back a growing bead and gives way
+        // only at a few weak points, which become the drips. A drip already
+        // running carries on: water arriving from uphill pushes its head over
+        // the dry paper.
+        let r = p - (q - p);
+        let surge = select(0.0, textureLoad(flux_in, r, 0)[comp], inside(r));
+        let weak = max(
+            smoothstep(0.62, 0.8, vnoise(vec2<f32>(p) / 7.0 + vec2<f32>(57.0, 13.0))),
+            smoothstep(0.1, 0.25, surge),
+        );
+        tension *= 1.0 + down * mix(2.0, -0.5, weak);
+    }
+    // Damp paper below a bead doesn't let it through either, or it would seep
+    // out as a fringe of streaks.
+    let q_wet = wq.x > EPS_WATER || wq.y > P.cap_threshold * (1.0 + 4.0 * down);
+    if (!q_wet && h * mix(1.0, g * 1.6, deep) < tension) {
         f = 0.0;
     }
     return f;
@@ -93,10 +124,10 @@ fn main(@builtin(workgroup_id) wg: vec3<u32>, @builtin(local_invocation_id) li: 
         let H = h + P.paper_influence * textureLoad(paper, p, 0).r;
         let old = textureLoad(flux_in, p, 0);
         f = vec4<f32>(
-            pipe(p, p + vec2<i32>(-1, 0), h, H, old.x),
-            pipe(p, p + vec2<i32>(1, 0), h, H, old.y),
-            pipe(p, p + vec2<i32>(0, -1), h, H, old.z),
-            pipe(p, p + vec2<i32>(0, 1), h, H, old.w),
+            pipe(p, p + vec2<i32>(-1, 0), h, H, old.x, 0),
+            pipe(p, p + vec2<i32>(1, 0), h, H, old.y, 1),
+            pipe(p, p + vec2<i32>(0, -1), h, H, old.z, 2),
+            pipe(p, p + vec2<i32>(0, 1), h, H, old.w, 3),
         );
         let total = (f.x + f.y + f.z + f.w) * P.dt;
         if (total > h) {

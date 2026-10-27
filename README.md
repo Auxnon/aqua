@@ -33,6 +33,13 @@ ink feathering into a wet wash, and a bloom from clear water in a damp rose wash
 - **Eraser** and **eyedropper**. On dry or damp paint the eraser erases. Where
   water is still standing it lifts the paint and smears it along the stroke, the
   way a dry brush or tissue drags through a wet wash.
+- **Tipping the paper.** The gimbal button in the top bar opens a gimbal over
+  the middle of the canvas. Drag inside it to tip the paper towards your
+  finger. While it's open, tipping the phone tips the paper further, measured
+  from how you were holding it. Tap outside to close it; the paper stays tipped
+  until you level it. Wet paint, ink and water on tipped paper sag downhill and
+  gather into a bead along their lower edge, which breaks out at a few weak
+  points and runs as drips. A thin, nearly dry film stays where it is.
 - **Layers.** Each layer has opacity, visibility, reorder, clear, delete, its
   own drying speed (from 4x faster down to 100x slower than normal), a **Flood
   flow** setting, and a "dry now" button (also in the top bar while the active
@@ -66,7 +73,11 @@ Each simulation step runs four compute passes (`engine/src/shaders/`):
    (cockles) that form in soaked paper, and finds drifting channels, so it runs
    and veins instead of sitting as a round puddle. Ordinary strokes are too
    shallow to be affected. A brush stops releasing water into paper that is
-   already flooded.
+   already flooded. Tipped paper adds a constant downhill slope that only
+   beaded water feels. At a downhill dry edge, surface tension is stronger
+   except at scattered weak points and where a running drip pushes through, so
+   the bead holds and then drips. Drips that reach the edge of the paper run
+   off it.
 2. `transport.wgsl`: conservatively moves water, suspended pigment and wet ink
    along the fluxes.
 3. `settle_water.wgsl`: the paper absorbs water, capillary action wicks it
@@ -133,7 +144,7 @@ The engine runs headless on any desktop GPU:
 cd engine
 cargo test --release --lib
 cargo run --release --example paint_test -- /tmp/aqua_out   # writes PNGs of every brush and effect
-cargo run --release --example brush_test -- /tmp/aqua_brush  # resting brush, splatter, calm vs wild floods
+cargo run --release --example brush_test -- /tmp/aqua_brush  # resting brush, splatter, floods, eraser, tipped paper
 cargo run --release --example bench                         # simulation timings at 2048×2048, and a wash drying
 ```
 

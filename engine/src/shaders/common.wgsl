@@ -27,6 +27,8 @@ struct SimParams {
     // How unruly deep water gets (the layer's Flow setting), and simulation time.
     chaos: f32,
     time: f32,
+    // The paper's downhill direction, length 0 (flat) to 1 (steep).
+    tilt: vec2<f32>,
 }
 
 const EPS_WATER: f32 = 1e-3;
