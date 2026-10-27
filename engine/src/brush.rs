@@ -107,6 +107,9 @@ pub struct InputPoint {
 }
 
 /// How long the brush must rest before it starts soaking paint into the paper.
+/// Radius of a fine nib. Splatter throw distance and flick sensitivity are set
+/// by this rather than the brush size.
+const SPLAT_NIB: f32 = 3.0;
 const DWELL_DELAY: f32 = 0.08;
 
 pub struct Stroke {
@@ -193,7 +196,7 @@ impl Stroke {
         if self.started {
             // Flicking the pen off the paper throws ink ahead of the stroke.
             if let Some(q) = self.prev_raw {
-                let r = self.radius(q.pressure).max(1.5);
+                let r = self.radius(q.pressure).clamp(1.5, SPLAT_NIB);
                 let speed = ((p.x - q.x).powi(2) + (p.y - q.y).powi(2)).sqrt() / r;
                 self.flick += (speed - 4.0).max(0.0) * 0.12;
                 if self.flick > 0.3 {
@@ -235,7 +238,8 @@ impl Stroke {
         }
         if let Some(q) = self.prev_raw {
             let dp = (p.pressure - q.pressure).abs();
-            let r = self.radius(p.pressure).max(1.5);
+            // Measured against a small nib, so a big brush flicks as easily as a fine one.
+            let r = self.radius(p.pressure).clamp(1.5, SPLAT_NIB);
             let speed = ((p.x - q.x).powi(2) + (p.y - q.y).powi(2)).sqrt() / r;
             self.flick = self.flick * 0.85 + (dp - 0.04).max(0.0) * 8.0 + (speed - 6.0).max(0.0) * 0.1;
             if self.flick > 0.35 {
@@ -249,27 +253,52 @@ impl Stroke {
         self.prev_raw = Some(p);
     }
 
-    /// Throws ink droplets around `p`, mostly along the stroke direction.
+    /// Throws ink droplets around `p`, mostly along the stroke direction. Drops fly
+    /// about as far as from a fine nib whatever the brush size; a bigger blot
+    /// instead gets a ragged, spiky rim, like a heavy drop hitting the paper.
     fn splatter(&mut self, p: InputPoint, energy: f32, spread: f32, out: &mut Vec<(DabKind, Dab)>) {
         let s = self.settings;
         let n = (energy * 6.0 * s.splatter).ceil().min(12.0) as u32;
         let r = self.radius(p.pressure).max(1.5);
+        let nib = r.min(SPLAT_NIB);
+        let big = r / nib;
         let base = self.dir[1].atan2(self.dir[0]);
         let reach = (0.5 + energy).min(2.5);
+        let amt = |rnd: f32| 2.0 * (0.4 + 0.6 * s.load) * (0.6 + 0.6 * rnd);
         for _ in 0..n {
             let a = base + (self.rand() * 2.0 - 1.0) * spread;
-            let d = r * (1.5 + self.rand() * self.rand() * 14.0) * reach;
-            let radius = r * (0.12 + 0.5 * self.rand() * self.rand());
-            let amt = 2.0 * (0.4 + 0.6 * s.load) * (0.6 + 0.6 * self.rand());
-            let dab = Dab {
-                pos_radius: [p.x + a.cos() * d, p.y + a.sin() * d, radius.max(0.6), self.rand() * std::f32::consts::TAU],
-                water_push: [0.0; 4],
-                pigment: [0.0; 4],
-                ink: [0.0; 4],
-                shape: [(1.0 / radius).clamp(0.08, 0.5), 0.0, self.seed, 0.0],
-            };
-            push_ink(dab, s.pigment.map(|v| v * amt), s.bleed, 1.0, out);
+            // Measured from the blot's edge, in nib-sized steps.
+            let d = r - nib + nib * (1.5 + self.rand() * self.rand() * 14.0) * reach;
+            let radius = nib * (0.12 + 0.5 * self.rand() * self.rand()) * big.powf(0.3);
+            let rnd = self.rand();
+            self.splat_drop(p, a, d, radius, s.pigment.map(|v| v * amt(rnd)), out);
         }
+        // Spikes and satellite blobs breaking up the rim of a big blot.
+        let spikes = ((big - 1.0) * energy * 3.0 * s.splatter).ceil().min(18.0) as u32;
+        let rim_spread = if spread > 1.5 { spread } else { spread + 0.6 };
+        for _ in 0..spikes {
+            let a = base + (self.rand() * 2.0 - 1.0) * rim_spread;
+            let len = r * (0.15 + 0.45 * self.rand()) + nib * reach * self.rand();
+            let width = r * (0.08 + 0.12 * self.rand());
+            let rnd = self.rand();
+            let ink = s.pigment.map(|v| v * amt(rnd));
+            // A tapering run of drops from inside the rim outwards.
+            for k in 0..3 {
+                let t = k as f32 / 2.0;
+                self.splat_drop(p, a, r * 0.8 + len * t, width * (1.0 - 0.45 * t), ink, out);
+            }
+        }
+    }
+
+    fn splat_drop(&mut self, p: InputPoint, a: f32, d: f32, radius: f32, ink: Pigment, out: &mut Vec<(DabKind, Dab)>) {
+        let dab = Dab {
+            pos_radius: [p.x + a.cos() * d, p.y + a.sin() * d, radius.max(0.6), self.rand() * std::f32::consts::TAU],
+            water_push: [0.0; 4],
+            pigment: [0.0; 4],
+            ink: [0.0; 4],
+            shape: [(1.0 / radius).clamp(0.08, 0.5), 0.0, self.seed, 0.0],
+        };
+        push_ink(dab, ink, self.settings.bleed, 1.0, out);
     }
 
     fn walk_to(&mut self, target: InputPoint, out: &mut Vec<(DabKind, Dab)>) {

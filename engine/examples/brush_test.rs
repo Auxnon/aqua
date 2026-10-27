@@ -100,6 +100,13 @@ fn main() {
         flick.push(InputPoint { x: 280.0 + (k * k) as f32 * 9.0, y: 560.0 - (k * k) as f32 * 3.0, pressure: 0.5 - k as f32 * 0.1 });
     }
     draw(&mut e, &flick);
+
+    // The same with a big brush: drops should fly about as far, with a rougher rim.
+    e.brush.size = 14.0;
+    let jabs: Vec<InputPoint> = jabs.iter().map(|p| InputPoint { x: p.x + 500.0, ..*p }).collect();
+    draw(&mut e, &jabs);
+    let flick: Vec<InputPoint> = flick.iter().map(|p| InputPoint { x: p.x + 500.0, y: p.y + 40.0, ..*p }).collect();
+    draw(&mut e, &flick);
     dry(&mut e);
     storage::export_png(e.canvas.as_mut().unwrap(), &out.join("brush.png")).unwrap();
 
