@@ -266,14 +266,18 @@ impl Stroke {
         let big = r / nib;
         let base = self.dir[1].atan2(self.dir[0]);
         let reach = (0.5 + energy).min(2.5);
-        let amt = |rnd: f32| 2.0 * (0.4 + 0.6 * s.load) * (0.6 + 0.6 * rnd);
         for _ in 0..n {
             let a = base + (self.rand() * 2.0 - 1.0) * spread;
             // Measured from the blot's edge, in nib-sized steps.
             let d = r - nib + nib * (1.5 + self.rand() * self.rand() * 14.0) * reach;
             let radius = nib * (0.12 + 0.5 * self.rand() * self.rand()) * big.powf(0.3);
-            let rnd = self.rand();
-            self.splat_drop(p, a, d, radius, s.pigment.map(|v| v * amt(rnd)), out);
+            // Near drops are often still joined to the blot by a thin neck.
+            if d < r + nib * 3.0 && self.rand() < 0.5 {
+                self.splat_run(p, a, r * 0.85, d, (radius * 0.45, radius * 0.3), out);
+            }
+            // Drops thrown further are stretched along their flight into teardrops.
+            let stretch = ((d - r) / (nib * 8.0)).clamp(0.0, 1.0);
+            self.splat_drop(p, a, d, radius, stretch, out);
         }
         // Spikes and satellite blobs breaking up the rim of a big blot.
         let spikes = ((big - 1.0) * energy * 3.0 * s.splatter).ceil().min(18.0) as u32;
@@ -282,25 +286,78 @@ impl Stroke {
             let a = base + (self.rand() * 2.0 - 1.0) * rim_spread;
             let len = r * (0.15 + 0.45 * self.rand()) + nib * reach * self.rand();
             let width = r * (0.08 + 0.12 * self.rand());
-            let rnd = self.rand();
-            let ink = s.pigment.map(|v| v * amt(rnd));
-            // A tapering run of drops from inside the rim outwards.
-            for k in 0..3 {
-                let t = k as f32 / 2.0;
-                self.splat_drop(p, a, r * 0.8 + len * t, width * (1.0 - 0.45 * t), ink, out);
+            self.splat_run(p, a, r * 0.8, r * 0.8 + len, (width, width * 0.4), out);
+            if self.rand() < 0.4 {
+                let da = (self.rand() - 0.5) * 0.3;
+                self.splat_drop(p, a + da, r * 0.8 + len * 1.3 + width, width * 0.8, 0.3, out);
             }
         }
     }
 
-    fn splat_drop(&mut self, p: InputPoint, a: f32, d: f32, radius: f32, ink: Pigment, out: &mut Vec<(DabKind, Dab)>) {
+    /// Ink as dark as the stroke's own, for a drop of `radius`, plus the water that
+    /// India ink carries with it.
+    fn splat_ink(&mut self, p: InputPoint) -> (Pigment, f32) {
+        let s = self.settings;
+        let flow = 1.0 - s.pressure_flow + s.pressure_flow * p.pressure.clamp(0.0, 1.0);
+        // A stroke builds up about this many dabs' worth at any point.
+        let amt = 4.0 * flow.max(0.5) * (0.4 + 0.6 * s.load) * (0.8 + 0.4 * self.rand());
+        (s.pigment.map(|v| v * amt), 1.6)
+    }
+
+    /// One lumpy drop: a few overlapping blobs, trailing back towards the blot
+    /// by `stretch` (0 = round).
+    fn splat_drop(&mut self, p: InputPoint, a: f32, d: f32, radius: f32, stretch: f32, out: &mut Vec<(DabKind, Dab)>) {
+        self.splat_dab(p, a, d, radius, out);
+        let lumps = 1 + (self.rand() * 3.0) as u32;
+        for _ in 0..lumps {
+            let off = radius * (0.3 + 0.5 * self.rand());
+            let la = self.rand() * std::f32::consts::TAU;
+            let (x, y) = (p.x + a.cos() * d + la.cos() * off, p.y + a.sin() * d + la.sin() * off);
+            let lr = radius * (0.35 + 0.4 * self.rand());
+            self.splat_at(p, x, y, lr, out);
+        }
+        // Tail: smaller blobs back along the flight path.
+        let tail = (stretch * 4.0) as u32;
+        for k in 1..=tail {
+            let t = k as f32 / (tail + 1) as f32;
+            let jitter = (self.rand() - 0.5) * radius * 0.4;
+            let back = d - radius * (0.6 + 2.2 * t) * (0.5 + stretch);
+            let (x, y) = (p.x + a.cos() * back - a.sin() * jitter, p.y + a.sin() * back + a.cos() * jitter);
+            self.splat_at(p, x, y, radius * (1.0 - 0.75 * t), out);
+        }
+    }
+
+    /// A wandering run of ink from distance `from` to `to` along `a`, tapering
+    /// from width `w0` to `w1`.
+    fn splat_run(&mut self, p: InputPoint, a: f32, from: f32, to: f32, (w0, w1): (f32, f32), out: &mut Vec<(DabKind, Dab)>) {
+        let steps = (((to - from) / (w0.min(w1) * 0.7).max(0.5)).ceil() as u32).clamp(2, 24);
+        let mut ang = a;
+        for k in 0..=steps {
+            let t = k as f32 / steps as f32;
+            ang += (self.rand() - 0.5) * 0.12;
+            let d = from + (to - from) * t;
+            let w = (w0 + (w1 - w0) * t) * (0.8 + 0.4 * self.rand());
+            self.splat_at(p, p.x + ang.cos() * d, p.y + ang.sin() * d, w, out);
+        }
+    }
+
+    fn splat_dab(&mut self, p: InputPoint, a: f32, d: f32, radius: f32, out: &mut Vec<(DabKind, Dab)>) {
+        self.splat_at(p, p.x + a.cos() * d, p.y + a.sin() * d, radius, out);
+    }
+
+    fn splat_at(&mut self, p: InputPoint, x: f32, y: f32, radius: f32, out: &mut Vec<(DabKind, Dab)>) {
+        let radius = radius.max(0.6);
+        let (ink, water) = self.splat_ink(p);
+        let bleed = self.settings.bleed;
         let dab = Dab {
-            pos_radius: [p.x + a.cos() * d, p.y + a.sin() * d, radius.max(0.6), self.rand() * std::f32::consts::TAU],
+            pos_radius: [x, y, radius, self.rand() * std::f32::consts::TAU],
             water_push: [0.0; 4],
             pigment: [0.0; 4],
             ink: [0.0; 4],
-            shape: [(1.0 / radius).clamp(0.08, 0.5), 0.0, self.seed, 0.0],
+            // The same crisp edge as the ink stroke.
+            shape: [(1.2 / radius).clamp(0.02, 0.5) + bleed.clamp(0.0, 1.0) * 0.15, 0.0, self.seed, 0.0],
         };
-        push_ink(dab, ink, self.settings.bleed, 1.0, out);
+        push_ink(dab, ink, bleed, water, out);
     }
 
     fn walk_to(&mut self, target: InputPoint, out: &mut Vec<(DabKind, Dab)>) {
