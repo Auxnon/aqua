@@ -54,6 +54,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.currentStateAsState
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -112,6 +113,10 @@ fun CanvasScreen(dir: File, onExit: (Arrival?) -> Unit) {
     // Which way the paper is tipped on screen; the gimbal sets it.
     var tilt by remember { mutableStateOf(Offset.Zero) }
     var gimbal by remember { mutableStateOf(false) }
+    val gyro = remember { GravityTilt() }
+    val canKeepTilt = remember { hasTiltSensor(context) }
+    // Phone tilt keeps steering the paper after the gimbal is closed.
+    var keepTilt by remember { mutableStateOf(false) }
     // The controls fade away while pinching out to the gallery and while leaving.
     val chrome by animateFloatAsState(if (exiting || overviewHint) 0f else 1f, label = "chrome")
 
@@ -235,7 +240,7 @@ fun CanvasScreen(dir: File, onExit: (Arrival?) -> Unit) {
                             refresh()
                         }
                     }
-                    GimbalButton(tilt, selected = gimbal) {
+                    GimbalButton(tilt, selected = gimbal || keepTilt) {
                         panel = Panel.None
                         gimbal = !gimbal
                     }
@@ -306,8 +311,15 @@ fun CanvasScreen(dir: File, onExit: (Arrival?) -> Unit) {
         }
 
         AnimatedVisibility(gimbal && !exiting, enter = fadeIn(), exit = fadeOut()) {
-            GimbalOverlay(tilt, { tilt = it }, onDismiss = { gimbal = false })
+            GimbalOverlay(
+                tilt, { tilt = it }, gyro,
+                canKeepOn = canKeepTilt, keepOn = keepTilt, onKeepOn = { keepTilt = it },
+                onDismiss = { gimbal = false },
+            )
         }
+        // Not while the app is in the background.
+        val resumed by lifecycle.currentStateAsState()
+        PhoneTilt((gimbal || keepTilt) && resumed.isAtLeast(Lifecycle.State.RESUMED) && !exiting, gyro, tilt) { tilt = it }
 
         AnimatedVisibility(
             overviewHint && !exiting,

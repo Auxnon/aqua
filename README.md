@@ -37,7 +37,9 @@ ink feathering into a wet wash, and a bloom from clear water in a damp rose wash
   the middle of the canvas. Drag inside it to tip the paper towards your
   finger. While it's open, tipping the phone tips the paper further, measured
   from how you were holding it. Tap outside to close it; the paper stays tipped
-  until you level it. Wet paint, ink and water on tipped paper sag downhill and
+  until you level it. On phones with a tilt sensor, **Keep phone tilt on when
+  closed** keeps the phone steering the paper while you paint (paused while the
+  app is in the background). Wet paint, ink and water on tipped paper sag downhill and
   gather into a bead along their lower edge, which breaks out at a few weak
   points and runs as drips. A thin, nearly dry film stays where it is.
 - **Layers.** Each layer has opacity, visibility, reorder, clear, delete, its

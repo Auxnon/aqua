@@ -14,16 +14,19 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -37,6 +40,7 @@ import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.aqua.ui.theme.AquaColors
@@ -108,24 +112,27 @@ private fun DrawScope.drawGimbal(tilt: Offset, color: Color, strokeWidth: Float,
     drawCircle(color, dot, p)
 }
 
+/** Whether the phone can tell which way it's tipped. */
+fun hasTiltSensor(context: Context): Boolean {
+    val sm = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
+    return sm.getDefaultSensor(Sensor.TYPE_GRAVITY) != null || sm.getDefaultSensor(Sensor.TYPE_ACCELEROMETER) != null
+}
+
 /**
- * The paper-tipping gimbal, shown over the middle of the canvas. Dragging inside
- * it tips the paper towards the finger, and while it is open the phone's own
- * tilt tips it further, measured from how it was held when the gimbal opened or
- * the last drag ended. Tapping outside closes it; the paper stays tipped.
+ * Tips the paper with the phone while [enabled]: the tilt is the paper's tilt
+ * when it was turned on, plus however far the phone has tipped since.
  */
 @Composable
-fun GimbalOverlay(tilt: Offset, onTilt: (Offset) -> Unit, onDismiss: () -> Unit) {
+fun PhoneTilt(enabled: Boolean, gyro: GravityTilt, tilt: Offset, onTilt: (Offset) -> Unit) {
+    if (!enabled) return
     val context = LocalContext.current
     val view = LocalView.current
     val tiltNow by rememberUpdatedState(tilt)
     val onTiltNow by rememberUpdatedState(onTilt)
-    val gyro = remember { GravityTilt() }
-
-    DisposableEffect(Unit) {
+    DisposableEffect(gyro) {
         val sm = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
         val sensor = sm.getDefaultSensor(Sensor.TYPE_GRAVITY) ?: sm.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
-        gyro.base = tiltNow
+        gyro.start(tiltNow)
         val listener = object : SensorEventListener {
             override fun onSensorChanged(e: SensorEvent) {
                 gyro.update(e.values, view.display?.rotation ?: Surface.ROTATION_0)?.let { onTiltNow(it) }
@@ -136,6 +143,27 @@ fun GimbalOverlay(tilt: Offset, onTilt: (Offset) -> Unit, onDismiss: () -> Unit)
         if (sensor != null) sm.registerListener(listener, sensor, SensorManager.SENSOR_DELAY_GAME)
         onDispose { sm.unregisterListener(listener) }
     }
+}
+
+/**
+ * The paper-tipping gimbal, shown over the middle of the canvas. Dragging inside
+ * it tips the paper towards the finger, and while it is open (or while [keepOn]
+ * is ticked) the phone's own tilt tips it further, measured from how it was held
+ * when that started or the last drag ended. Tapping outside closes it; the paper
+ * stays tipped. The keep-on box is only offered when the phone has a tilt sensor.
+ */
+@Composable
+fun GimbalOverlay(
+    tilt: Offset,
+    onTilt: (Offset) -> Unit,
+    gyro: GravityTilt,
+    canKeepOn: Boolean,
+    keepOn: Boolean,
+    onKeepOn: (Boolean) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val tiltNow by rememberUpdatedState(tilt)
+    val onTiltNow by rememberUpdatedState(onTilt)
 
     Box(
         Modifier
@@ -193,6 +221,28 @@ fun GimbalOverlay(tilt: Offset, onTilt: (Offset) -> Unit, onDismiss: () -> Unit)
                     }
                     .padding(horizontal = 14.dp, vertical = 6.dp),
             )
+            if (canKeepOn) {
+                Row(
+                    Modifier
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(AquaColors.Panel)
+                        .toggleable(keepOn, role = Role.Checkbox, onValueChange = onKeepOn)
+                        .padding(start = 4.dp, end = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Checkbox(
+                        keepOn,
+                        onCheckedChange = null,
+                        modifier = Modifier.padding(8.dp).size(20.dp),
+                        colors = CheckboxDefaults.colors(
+                            checkedColor = AquaColors.Accent,
+                            uncheckedColor = AquaColors.TextDim,
+                            checkmarkColor = AquaColors.Background,
+                        ),
+                    )
+                    Text("Keep phone tilt on when closed", color = AquaColors.Text, fontSize = 13.sp)
+                }
+            }
         }
     }
 }
@@ -202,12 +252,20 @@ fun GimbalOverlay(tilt: Offset, onTilt: (Offset) -> Unit, onDismiss: () -> Unit)
  * plus however far the phone has tipped since the reference reading, so holding
  * the phone at any comfortable angle starts out from where the paper already is.
  */
-private class GravityTilt {
+class GravityTilt {
     var base = Offset.Zero
     var dragging = false
     private var ref: FloatArray? = null
     private val g = FloatArray(3)
     private var primed = false
+
+    /** Starts listening afresh from [t]: the next reading becomes the reference pose. */
+    fun start(t: Offset) {
+        base = t
+        dragging = false
+        ref = null
+        primed = false
+    }
 
     /** Ends a drag at [t]: the phone's current pose now means [t]. */
     fun release(t: Offset) {

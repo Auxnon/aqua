@@ -58,8 +58,8 @@ const COCKLE_HEIGHT: f32 = 16.0;
 // Tipped paper. A thin film clings to the paper and stays put; water that has
 // gathered into a bead is pulled downhill, so a tipped wash slowly pools along its
 // lower edge until the bead breaks and runs as a drip.
-const TILT_SLOPE: f32 = 0.12;
-const TILT_HOLD: f32 = 0.06;
+const TILT_SLOPE: f32 = 0.48;
+const TILT_HOLD: f32 = 0.03;
 
 fn tilt(p: vec2<i32>, q: vec2<i32>, h: f32) -> f32 {
     return TILT_SLOPE * smoothstep(TILT_HOLD, TILT_HOLD * 4.0, h) * dot(P.tilt, vec2<f32>(q - p));
