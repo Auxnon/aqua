@@ -1,6 +1,9 @@
 package app.aqua.ui.gallery
 
 import android.graphics.BitmapFactory
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -43,6 +46,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
@@ -54,8 +61,12 @@ import androidx.compose.ui.unit.sp
 import app.aqua.AquaApp
 import app.aqua.data.Artwork
 import app.aqua.engine.Native
+import app.aqua.ui.Arrival
+import app.aqua.ui.CARD_CORNER_DP
+import app.aqua.ui.FlyingPainting
 import app.aqua.ui.theme.AquaColors
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -65,7 +76,7 @@ import kotlin.math.max
 import kotlin.random.Random
 
 @Composable
-fun GalleryScreen(onOpen: (File) -> Unit) {
+fun GalleryScreen(onOpen: (File) -> Unit, arrival: Arrival? = null, onArrived: () -> Unit = {}) {
     val app = LocalContext.current.applicationContext as AquaApp
     val scope = rememberCoroutineScope()
     var items by remember { mutableStateOf<List<Artwork>>(emptyList()) }
@@ -80,6 +91,27 @@ fun GalleryScreen(onOpen: (File) -> Unit) {
         }
     }
     LaunchedEffect(Unit) { reload() }
+
+    // A painting coming back from the editor flies from where the canvas was into
+    // its card while the rest of the gallery fades in around it.
+    val flight = remember { Animatable(0f) }
+    var landing by remember { mutableStateOf<Rect?>(null) }
+    var landed by remember { mutableStateOf(arrival == null) }
+    LaunchedEffect(arrival, landing) {
+        if (landed || landing == null) return@LaunchedEffect
+        flight.animateTo(1f, tween(520, easing = FastOutSlowInEasing))
+        landed = true
+        onArrived()
+    }
+    LaunchedEffect(arrival) {
+        // If the card can't be found, don't leave the gallery waiting.
+        delay(1500)
+        if (!flight.isRunning && !landed) {
+            landed = true
+            onArrived()
+        }
+    }
+    val galleryAlpha = if (landed) 1f else flight.value
 
     fun open(dir: File) {
         if (busy) return
@@ -97,12 +129,12 @@ fun GalleryScreen(onOpen: (File) -> Unit) {
         Column(Modifier.fillMaxSize().statusBarsPadding()) {
             Text(
                 "Aqua",
+                modifier = Modifier.graphicsLayer { alpha = galleryAlpha }.padding(start = 20.dp, top = 18.dp, bottom = 12.dp),
                 color = AquaColors.Text,
                 fontSize = 28.sp,
                 fontWeight = FontWeight.Light,
-                modifier = Modifier.padding(start = 20.dp, top = 18.dp, bottom = 12.dp),
             )
-            if (items.isEmpty()) {
+            if (items.isEmpty() && arrival == null) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text("Tap + to start a painting", color = AquaColors.TextDim)
                 }
@@ -114,8 +146,14 @@ fun GalleryScreen(onOpen: (File) -> Unit) {
                     verticalArrangement = Arrangement.spacedBy(18.dp),
                 ) {
                     items(items, key = { it.id }) { art ->
+                        val arriving = !landed && art.dir.path == arrival?.dir
                         ArtCard(
                             art,
+                            modifier = if (arriving) {
+                                Modifier.graphicsLayer { alpha = 0f }.onGloballyPositioned { landing = it.boundsInRoot() }
+                            } else {
+                                Modifier.graphicsLayer { alpha = galleryAlpha }
+                            },
                             onClick = { open(art.dir) },
                             onDelete = { app.repo.delete(art); reload() },
                             onDuplicate = { scope.launch(Dispatchers.IO) { app.repo.duplicate(art); reload() } },
@@ -127,8 +165,14 @@ fun GalleryScreen(onOpen: (File) -> Unit) {
         FloatingActionButton(
             onClick = { creating = true },
             containerColor = AquaColors.Accent,
-            modifier = Modifier.align(Alignment.BottomEnd).navigationBarsPadding().padding(22.dp),
+            modifier = Modifier.align(Alignment.BottomEnd).navigationBarsPadding().padding(22.dp).graphicsLayer { alpha = galleryAlpha },
         ) { Icon(Icons.Outlined.Add, "New painting") }
+
+        val to = landing
+        if (!landed && arrival != null) {
+            // Until the card is laid out, hold the painting where the canvas was.
+            FlyingPainting(arrival.thumb, arrival.from, to ?: Rect.Zero, if (to == null) 0f else flight.value)
+        }
     }
 
     if (creating) {
@@ -152,19 +196,19 @@ fun GalleryScreen(onOpen: (File) -> Unit) {
 }
 
 @Composable
-private fun ArtCard(art: Artwork, onClick: () -> Unit, onDelete: () -> Unit, onDuplicate: () -> Unit) {
+private fun ArtCard(art: Artwork, onClick: () -> Unit, onDelete: () -> Unit, onDuplicate: () -> Unit, modifier: Modifier = Modifier) {
     var menu by remember { mutableStateOf(false) }
     var confirm by remember { mutableStateOf(false) }
     val thumb by produceState<ImageBitmap?>(null, art.thumb, art.modified) {
         value = withContext(Dispatchers.IO) { BitmapFactory.decodeFile(art.thumb.path)?.asImageBitmap() }
     }
-    Column {
+    Column(modifier) {
         Box(
             Modifier
                 .fillMaxWidth()
                 .aspectRatio(art.width / max(1f, art.height.toFloat()))
-                .clip(RoundedCornerShape(6.dp))
-                .border(1.dp, AquaColors.Line, RoundedCornerShape(6.dp))
+                .clip(RoundedCornerShape(CARD_CORNER_DP.dp))
+                .border(1.dp, AquaColors.Line, RoundedCornerShape(CARD_CORNER_DP.dp))
                 .background(AquaColors.Raised)
                 .combinedClickable(onClick = onClick, onLongClick = { menu = true }),
         ) {

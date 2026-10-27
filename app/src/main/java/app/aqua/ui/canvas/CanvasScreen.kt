@@ -1,11 +1,13 @@
 package app.aqua.ui.canvas
 
 import android.content.ContentValues
+import android.graphics.BitmapFactory
 import android.content.Context
 import android.provider.MediaStore
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
@@ -33,6 +35,7 @@ import androidx.compose.material.icons.outlined.HistoryEdu
 import androidx.compose.material.icons.outlined.IosShare
 import androidx.compose.material.icons.outlined.Layers
 import androidx.compose.material.icons.outlined.WaterDrop
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -46,9 +49,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -59,6 +65,8 @@ import app.aqua.engine.LayerOp
 import app.aqua.engine.Native
 import app.aqua.engine.Pigment
 import app.aqua.engine.Tool
+import app.aqua.ui.Arrival
+import app.aqua.ui.CanvasFrame
 import app.aqua.ui.theme.AquaColors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -76,7 +84,7 @@ private fun railToSize(v: Float) = MAX_BRUSH.pow(v).coerceIn(1f, MAX_BRUSH)
 private enum class Panel { None, Layers, Palette, Brush }
 
 @Composable
-fun CanvasScreen(dir: File, onExit: () -> Unit) {
+fun CanvasScreen(dir: File, onExit: (Arrival?) -> Unit) {
     val context = LocalContext.current
     val app = context.applicationContext as AquaApp
     val engine = app.engine
@@ -97,6 +105,10 @@ fun CanvasScreen(dir: File, onExit: () -> Unit) {
     var ink by remember { mutableStateOf(Pigment.fromArgb(0xFF111114.toInt())) }
     var panel by remember { mutableStateOf(Panel.None) }
     var exiting by remember { mutableStateOf(false) }
+    var overviewHint by remember { mutableStateOf(false) }
+    var surface by remember { mutableStateOf<CanvasSurfaceView?>(null) }
+    // The controls fade away while pinching out to the gallery and while leaving.
+    val chrome by animateFloatAsState(if (exiting || overviewHint) 0f else 1f, label = "chrome")
 
     fun refresh() {
         scope.launch(Dispatchers.IO) {
@@ -139,13 +151,18 @@ fun CanvasScreen(dir: File, onExit: () -> Unit) {
         }
     }
 
-    fun leave() {
+    /** Saves and goes back to the gallery, which flies the painting from [from] into its card. */
+    fun leave(from: CanvasFrame? = surface?.frame()) {
         if (exiting) return
         exiting = true
+        panel = Panel.None
         scope.launch(Dispatchers.IO) {
             save()
             Native.closeCanvas(engine)
-            withContext(Dispatchers.Main) { onExit() }
+            // Decoded here so the gallery can show it on its very first frame.
+            val thumb = from?.let { BitmapFactory.decodeFile(File(dir, "thumb.png").path)?.asImageBitmap() }
+            val arrival = if (from != null && thumb != null) Arrival(dir.path, from, thumb) else null
+            withContext(Dispatchers.Main) { onExit(arrival) }
         }
     }
 
@@ -170,7 +187,9 @@ fun CanvasScreen(dir: File, onExit: () -> Unit) {
                     onStrokeEnd = { refresh() }
                     onUndo = { Native.undo(engine); refresh() }
                     onRedo = { Native.redo(engine); refresh() }
-                }
+                    onOverviewHint = { overviewHint = it }
+                    onOverview = { leave(it) }
+                }.also { surface = it }
             },
             update = { v ->
                 v.eyedropper = tool == Tool.Eyedropper
@@ -180,88 +199,104 @@ fun CanvasScreen(dir: File, onExit: () -> Unit) {
             },
         )
 
-        // Top bar.
-        Row(
-            Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 8.dp, vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Bar {
-                RoundButton(Icons.AutoMirrored.Outlined.ArrowBack, "Gallery") { leave() }
-                RoundButton(Icons.AutoMirrored.Outlined.Undo, "Undo", enabled = info.canUndo) { Native.undo(engine); refresh() }
-                RoundButton(Icons.AutoMirrored.Outlined.Redo, "Redo", enabled = info.canRedo) { Native.redo(engine); refresh() }
-            }
-            Spacer(Modifier.weight(1f))
-            Bar {
-                val activeWet = info.layers.getOrNull(info.active)?.wet == true
-                AnimatedVisibility(activeWet, enter = fadeIn(), exit = fadeOut()) {
-                    RoundButton(Icons.Outlined.Air, "Dry layer now") {
-                        Native.layerOp(engine, LayerOp.DRY, info.active, 0f, null)
-                        refresh()
+        Box(Modifier.fillMaxSize().graphicsLayer { alpha = chrome }) {
+            // Top bar.
+            Row(
+                Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 8.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Bar {
+                    RoundButton(Icons.AutoMirrored.Outlined.ArrowBack, "Gallery") { leave() }
+                    RoundButton(Icons.AutoMirrored.Outlined.Undo, "Undo", enabled = info.canUndo) { Native.undo(engine); refresh() }
+                    RoundButton(Icons.AutoMirrored.Outlined.Redo, "Redo", enabled = info.canRedo) { Native.redo(engine); refresh() }
+                }
+                Spacer(Modifier.weight(1f))
+                Bar {
+                    val activeWet = info.layers.getOrNull(info.active)?.wet == true
+                    AnimatedVisibility(activeWet, enter = fadeIn(), exit = fadeOut()) {
+                        RoundButton(Icons.Outlined.Air, "Dry layer now") {
+                            Native.layerOp(engine, LayerOp.DRY, info.active, 0f, null)
+                            refresh()
+                        }
+                    }
+                    RoundButton(Icons.Outlined.IosShare, "Export") {
+                        scope.launch {
+                            val ok = exportToGallery(context, engine)
+                            Toast.makeText(context, if (ok) "Saved to Pictures/Aqua" else "Export failed", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                    RoundButton(Icons.Outlined.Layers, "Layers", selected = panel == Panel.Layers) {
+                        panel = if (panel == Panel.Layers) Panel.None else Panel.Layers
+                    }
+                    Swatch(Color(color.argb), Modifier.padding(horizontal = 6.dp), size = 32.dp, selected = panel == Panel.Palette) {
+                        panel = if (panel == Panel.Palette) Panel.None else Panel.Palette
                     }
                 }
-                RoundButton(Icons.Outlined.IosShare, "Export") {
-                    scope.launch {
-                        val ok = exportToGallery(context, engine)
-                        Toast.makeText(context, if (ok) "Saved to Pictures/Aqua" else "Export failed", Toast.LENGTH_SHORT).show()
-                    }
+            }
+
+            // Side rail: size and the tool's main wetness / strength control.
+            Column(
+                Modifier
+                    .align(Alignment.CenterStart)
+                    .padding(start = 6.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(AquaColors.Panel)
+                    .padding(vertical = 10.dp, horizontal = 2.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                VerticalRailSlider(sizeToRail(bp.size), { params[brushTool] = bp.copy(size = railToSize(it)) }, label = "${bp.size.toInt()}")
+                Spacer(Modifier.size(14.dp))
+                when (brushTool) {
+                    Tool.Watercolor, Tool.Water -> VerticalRailSlider(bp.water, { params[brushTool] = bp.copy(water = it) }, height = 120.dp, label = "water")
+                    Tool.Ink -> VerticalRailSlider(bp.bleed, { params[brushTool] = bp.copy(bleed = it) }, height = 120.dp, label = "bleed")
+                    Tool.Eraser -> VerticalRailSlider(bp.strength, { params[brushTool] = bp.copy(strength = it) }, height = 120.dp, label = "strength")
+                    Tool.Eyedropper -> {}
                 }
-                RoundButton(Icons.Outlined.Layers, "Layers", selected = panel == Panel.Layers) {
-                    panel = if (panel == Panel.Layers) Panel.None else Panel.Layers
-                }
-                Swatch(Color(color.argb), Modifier.padding(horizontal = 6.dp), size = 32.dp, selected = panel == Panel.Palette) {
-                    panel = if (panel == Panel.Palette) Panel.None else Panel.Palette
-                }
+            }
+
+            // Tool dock.
+            Row(
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .navigationBarsPadding()
+                    .padding(bottom = 12.dp)
+                    .clip(RoundedCornerShape(28.dp))
+                    .background(AquaColors.Panel)
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                RoundButton(Icons.Outlined.Brush, "Watercolour", selected = tool == Tool.Watercolor, size = 48.dp) { selectTool(Tool.Watercolor) }
+                RoundButton(Icons.Outlined.WaterDrop, "Clear water", selected = tool == Tool.Water, size = 48.dp) { selectTool(Tool.Water) }
+                RoundButton(Icons.Outlined.HistoryEdu, "Ink", selected = tool == Tool.Ink, size = 48.dp) { selectTool(Tool.Ink) }
+                RoundButton(EraserIcon, "Eraser", selected = tool == Tool.Eraser, size = 48.dp) { selectTool(Tool.Eraser) }
+                RoundButton(Icons.Outlined.Colorize, "Eyedropper", selected = tool == Tool.Eyedropper, size = 48.dp) { selectTool(Tool.Eyedropper) }
+            }
+
+            // Panels.
+            val panelMod = Modifier.statusBarsPadding().padding(top = 56.dp, end = 10.dp)
+            when (panel) {
+                Panel.Layers -> LayersPanel(engine, info, { refresh() }, panelMod.align(Alignment.TopEnd))
+                Panel.Palette -> PalettePanel(color, { setColor(it) }, panelMod.align(Alignment.TopEnd))
+                Panel.Brush -> BrushPanel(
+                    brushTool, bp, { params[brushTool] = it },
+                    Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 80.dp),
+                )
+                Panel.None -> {}
             }
         }
 
-        // Side rail: size and the tool's main wetness / strength control.
-        Column(
-            Modifier
-                .align(Alignment.CenterStart)
-                .padding(start = 6.dp)
-                .clip(RoundedCornerShape(16.dp))
-                .background(AquaColors.Panel)
-                .padding(vertical = 10.dp, horizontal = 2.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
+        AnimatedVisibility(
+            overviewHint && !exiting,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 36.dp),
         ) {
-            VerticalRailSlider(sizeToRail(bp.size), { params[brushTool] = bp.copy(size = railToSize(it)) }, label = "${bp.size.toInt()}")
-            Spacer(Modifier.size(14.dp))
-            when (brushTool) {
-                Tool.Watercolor, Tool.Water -> VerticalRailSlider(bp.water, { params[brushTool] = bp.copy(water = it) }, height = 120.dp, label = "water")
-                Tool.Ink -> VerticalRailSlider(bp.bleed, { params[brushTool] = bp.copy(bleed = it) }, height = 120.dp, label = "bleed")
-                Tool.Eraser -> VerticalRailSlider(bp.strength, { params[brushTool] = bp.copy(strength = it) }, height = 120.dp, label = "strength")
-                Tool.Eyedropper -> {}
-            }
-        }
-
-        // Tool dock.
-        Row(
-            Modifier
-                .align(Alignment.BottomCenter)
-                .navigationBarsPadding()
-                .padding(bottom = 12.dp)
-                .clip(RoundedCornerShape(28.dp))
-                .background(AquaColors.Panel)
-                .padding(horizontal = 8.dp, vertical = 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            RoundButton(Icons.Outlined.Brush, "Watercolour", selected = tool == Tool.Watercolor, size = 48.dp) { selectTool(Tool.Watercolor) }
-            RoundButton(Icons.Outlined.WaterDrop, "Clear water", selected = tool == Tool.Water, size = 48.dp) { selectTool(Tool.Water) }
-            RoundButton(Icons.Outlined.HistoryEdu, "Ink", selected = tool == Tool.Ink, size = 48.dp) { selectTool(Tool.Ink) }
-            RoundButton(EraserIcon, "Eraser", selected = tool == Tool.Eraser, size = 48.dp) { selectTool(Tool.Eraser) }
-            RoundButton(Icons.Outlined.Colorize, "Eyedropper", selected = tool == Tool.Eyedropper, size = 48.dp) { selectTool(Tool.Eyedropper) }
-        }
-
-        // Panels.
-        val panelMod = Modifier.statusBarsPadding().padding(top = 56.dp, end = 10.dp)
-        when (panel) {
-            Panel.Layers -> LayersPanel(engine, info, { refresh() }, panelMod.align(Alignment.TopEnd))
-            Panel.Palette -> PalettePanel(color, { setColor(it) }, panelMod.align(Alignment.TopEnd))
-            Panel.Brush -> BrushPanel(
-                brushTool, bp, { params[brushTool] = it },
-                Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 80.dp),
+            Text(
+                "Release for gallery",
+                color = AquaColors.Text,
+                fontSize = 14.sp,
+                modifier = Modifier.clip(RoundedCornerShape(16.dp)).background(AquaColors.Panel).padding(horizontal = 16.dp, vertical = 8.dp),
             )
-            Panel.None -> {}
         }
     }
 }

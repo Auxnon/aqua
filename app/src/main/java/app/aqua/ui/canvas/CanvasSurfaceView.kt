@@ -8,16 +8,21 @@ import android.view.SurfaceHolder
 import android.view.SurfaceView
 import android.view.ViewConfiguration
 import app.aqua.engine.Native
+import app.aqua.ui.CanvasFrame
 import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.hypot
 import kotlin.math.min
 import kotlin.math.sqrt
 
+/** Pinching out below this fraction of the fitted size and letting go opens the gallery. */
+private const val OVERVIEW_ZOOM = 0.45f
+
 /**
  * Hosts the engine's swapchain and turns touches into strokes and view gestures:
  * one finger / stylus paints, two fingers pan-zoom-rotate, a two-finger tap undoes
  * and a three-finger tap redoes. Once a stylus has been seen, fingers only navigate.
+ * Pinching far out past the fitted view and letting go goes back to the gallery.
  */
 @SuppressLint("ViewConstructor")
 class CanvasSurfaceView(context: Context, private val engine: Long) : SurfaceView(context), SurfaceHolder.Callback {
@@ -26,12 +31,17 @@ class CanvasSurfaceView(context: Context, private val engine: Long) : SurfaceVie
     var onRedo: () -> Unit = {}
     var onSample: (FloatArray) -> Unit = {}
     var onTouchStart: () -> Unit = {}
+    /** True while a pinch is far enough out that letting go would leave for the gallery. */
+    var onOverviewHint: (Boolean) -> Unit = {}
+    var onOverview: (CanvasFrame) -> Unit = {}
     var eyedropper = false
 
     private var canvasW = 0
     private var canvasH = 0
     private var attached = false
     private var fitted = false
+    private var fitScale = 1f
+    private var overviewHint = false
     private val view = Matrix()
     private val inverse = Matrix()
     private val tmp = FloatArray(2)
@@ -71,6 +81,7 @@ class CanvasSurfaceView(context: Context, private val engine: Long) : SurfaceVie
     fun fit() {
         if (width == 0 || canvasW == 0) return
         val s = min(width * 0.92f / canvasW, height * 0.84f / canvasH)
+        fitScale = s
         view.setScale(s, s)
         view.postTranslate((width - canvasW * s) / 2f, (height - canvasH * s) / 2f)
         pushView()
@@ -83,13 +94,36 @@ class CanvasSurfaceView(context: Context, private val engine: Long) : SurfaceVie
         }
     }
 
+    private fun scale(): Float {
+        val m = FloatArray(9).also { view.getValues(it) }
+        return sqrt(abs(m[0] * m[4] - m[1] * m[3]))
+    }
+
     private fun pushView() {
         view.invert(inverse)
         val v = FloatArray(9)
         inverse.getValues(v)
+        Native.setView(engine, floatArrayOf(v[0], v[1], v[2], v[3], v[4], v[5], scale()))
+    }
+
+    private fun pastOverview() = canvasW > 0 && scale() < fitScale * OVERVIEW_ZOOM
+
+    private fun setOverviewHint(on: Boolean) {
+        if (on != overviewHint) {
+            overviewHint = on
+            onOverviewHint(on)
+        }
+    }
+
+    /** Where the canvas is on screen right now (this view fills the window). */
+    fun frame(): CanvasFrame? {
+        if (canvasW == 0) return null
         val m = FloatArray(9).also { view.getValues(it) }
-        val scale = sqrt(abs(m[0] * m[4] - m[1] * m[3]))
-        Native.setView(engine, floatArrayOf(v[0], v[1], v[2], v[3], v[4], v[5], scale))
+        val c = floatArrayOf(canvasW / 2f, canvasH / 2f)
+        view.mapPoints(c)
+        val s = scale()
+        val rot = Math.toDegrees(atan2(m[Matrix.MSKEW_Y], m[Matrix.MSCALE_X]).toDouble()).toFloat()
+        return CanvasFrame(c[0], c[1], canvasW * s, canvasH * s, rot)
     }
 
     override fun surfaceCreated(holder: SurfaceHolder) {}
@@ -180,6 +214,7 @@ class CanvasSurfaceView(context: Context, private val engine: Long) : SurfaceVie
             view.postRotate(deg)
             view.postTranslate(cx, cy)
             if (hypot(cx - g0x, cy - g0y) > slop || abs(s - 1f) > 0.04f || deg != 0f) moved = true
+            setOverviewHint(pastOverview())
         } else {
             val dx = e.getX(0) - g0x
             val dy = e.getY(0) - g0y
@@ -282,6 +317,8 @@ class CanvasSurfaceView(context: Context, private val engine: Long) : SurfaceVie
                             2 -> onUndo()
                             3 -> onRedo()
                         }
+                    } else if (overviewHint && pastOverview()) {
+                        frame()?.let(onOverview)
                     }
                     else -> {}
                 }
@@ -289,6 +326,7 @@ class CanvasSurfaceView(context: Context, private val engine: Long) : SurfaceVie
             }
             MotionEvent.ACTION_CANCEL -> {
                 if (mode == Mode.Drawing) Native.stroke(engine, 3, FloatArray(0))
+                setOverviewHint(false)
                 mode = Mode.None
             }
         }

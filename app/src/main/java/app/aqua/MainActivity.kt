@@ -10,6 +10,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import app.aqua.engine.Native
+import app.aqua.ui.Arrival
 import app.aqua.ui.canvas.CanvasScreen
 import app.aqua.ui.gallery.GalleryScreen
 import app.aqua.ui.theme.AquaTheme
@@ -24,13 +25,18 @@ class MainActivity : ComponentActivity() {
             AquaTheme {
                 // The painting directory that is open, if any; survives rotation.
                 var open by rememberSaveable { mutableStateOf<String?>(null) }
+                // The painting just closed, flying back into its place in the gallery.
+                var arrival by remember { mutableStateOf<Arrival?>(null) }
                 val dir = open?.let(::File)
                 if (dir == null) {
-                    GalleryScreen(onOpen = { open = it.path })
+                    GalleryScreen(onOpen = { open = it.path }, arrival = arrival, onArrived = { arrival = null })
                 } else {
                     // After process death the engine is empty again; reload what was open.
                     remember(dir) { if (Native.query(app.engine) == "{}") Native.load(app.engine, dir.path) }
-                    CanvasScreen(dir, onExit = { open = null })
+                    CanvasScreen(dir, onExit = {
+                        arrival = it
+                        open = null
+                    })
                 }
             }
         }

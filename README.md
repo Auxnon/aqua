@@ -48,7 +48,8 @@ ink feathering into a wet wash, and a bloom from clear water in a damp rose wash
 - **Undo/redo.** Tap two fingers to undo and three to redo, or use the
   buttons.
 - **Navigation.** Pinch to zoom, pan and rotate. Once a stylus has been used,
-  fingers only navigate (palm rejection).
+  fingers only navigate (palm rejection). Pinch far out and let go to go back to
+  the gallery: the painting shrinks into its place among the others.
 
 ## How the simulation works
 
