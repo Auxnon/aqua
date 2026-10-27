@@ -1,4 +1,5 @@
-//! Headless test of a resting brush, ink splatter and flooding water. Writes PNGs.
+//! Headless test of a resting brush, ink splatter, flooding water and erasing wet
+//! paint. Writes PNGs.
 //! `cargo run --release --example brush_test -- <out_dir>`
 
 use std::path::PathBuf;
@@ -65,10 +66,28 @@ fn water_stats(e: &Engine, what: &str) {
     println!("{what}: max depth {max_h:.2}, mean depth {:.2}, wet radius {radius:.0}px, {} tiles", sum_h / wet.max(1) as f32, c.sim_tiles());
 }
 
+/// Undoes every stroke and checks the canvas is back to blank paper.
+fn undo_to_blank(e: &mut Engine, name: &str) {
+    let c = e.canvas.as_mut().unwrap();
+    let (w, h) = (c.w, c.h);
+    while c.can_undo() {
+        c.undo();
+    }
+    let (_, _, undone) = storage::composite_srgb(c, 800);
+    let mut blank = Engine::new(c.gpu().clone());
+    blank.new_canvas(w, h, 0, 7);
+    let (_, _, fresh) = storage::composite_srgb(blank.canvas.as_mut().unwrap(), 800);
+    let differ = undone.iter().zip(&fresh).filter(|(a, b)| a.abs_diff(**b) > 2).count();
+    println!("{name}: after undoing everything, {differ} bytes differ from blank paper");
+    assert_eq!(differ, 0, "undo left marks behind");
+}
+
 fn main() {
     let out = PathBuf::from(std::env::args().nth(1).unwrap_or_else(|| "brush_out".into()));
     std::fs::create_dir_all(&out).unwrap();
     let gpu = Gpu::headless().expect("gpu");
+    // A validation error drops the whole frame silently; fail loudly instead.
+    gpu.device.on_uncaptured_error(std::sync::Arc::new(|err: wgpu::Error| panic!("wgpu: {err}")));
     let mut e = Engine::new(gpu);
     e.new_canvas(1000, 700, 0, 7);
 
@@ -136,20 +155,30 @@ fn main() {
         dry(&mut e);
         storage::export_png(e.canvas.as_mut().unwrap(), &out.join(format!("{name}.png"))).unwrap();
 
-        // Water that spread beyond the strokes is part of their undo: undoing every
-        // stroke must give back blank paper.
-        let c = e.canvas.as_mut().unwrap();
-        while c.can_undo() {
-            c.undo();
-        }
-        let (_, _, undone) = storage::composite_srgb(c, 800);
-        let mut blank = Engine::new(c.gpu().clone());
-        blank.new_canvas(800, 800, 0, 7);
-        let b = blank.canvas.as_mut().unwrap();
-        let (_, _, fresh) = storage::composite_srgb(b, 800);
-        let differ = undone.iter().zip(&fresh).filter(|(a, b)| a.abs_diff(**b) > 2).count();
-        println!("{name}: after undoing everything, {differ} bytes differ from blank paper");
-        assert_eq!(differ, 0, "undo left marks behind");
+        // Water that spread beyond the strokes is part of their undo.
+        undo_to_blank(&mut e, name);
     }
+
+    // Eraser across a wash: while water is standing it lifts and smears, once the
+    // surface has soaked in (still damp) and when dry it erases.
+    e.new_canvas(600, 400, 0, 7);
+    e.brush = BrushSettings { tool: Tool::Watercolor, size: 40.0, pigment: from_srgb([0.2, 0.3, 0.7]), water: 1.0, ..Default::default() };
+    for row in 0..3 {
+        let y = 120.0 + row as f32 * 60.0;
+        draw(&mut e, &(0..60).map(|i| InputPoint { x: 80.0 + i as f32 * 7.0, y, pressure: 0.8 }).collect::<Vec<_>>());
+    }
+    let line = |x: f32| (0..40).map(|i| InputPoint { x, y: 60.0 + i as f32 * 7.0, pressure: 0.8 }).collect::<Vec<_>>();
+    e.brush = BrushSettings { tool: Tool::Eraser, size: 20.0, strength: 0.8, softness: 0.4, bristle: 0.0, ..Default::default() };
+    draw(&mut e, &line(200.0));
+    for _ in 0..200 {
+        frame(&mut e);
+    }
+    assert!(e.canvas.as_ref().unwrap().any_wet());
+    draw(&mut e, &line(330.0));
+    dry(&mut e);
+    draw(&mut e, &line(440.0));
+    frame(&mut e);
+    storage::export_png(e.canvas.as_mut().unwrap(), &out.join("eraser.png")).unwrap();
+    undo_to_blank(&mut e, "eraser");
     println!("wrote {}", out.display());
 }

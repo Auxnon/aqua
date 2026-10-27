@@ -4,11 +4,15 @@
 
 struct DabGlobals {
     canvas: vec2<f32>,
-    _pad: vec2<f32>,
+    wet: f32,
+    _pad: f32,
 }
 
 @group(0) @binding(0) var<uniform> G: DabGlobals;
 @group(0) @binding(1) var paper: texture_2d<f32>;
+// The layer's surface water and settled pigment (eraser only).
+@group(0) @binding(2) var surface: texture_2d<f32>;
+@group(0) @binding(3) var settled: texture_2d<f32>;
 
 struct DabIn {
     @location(0) pos_radius: vec4<f32>,
@@ -112,9 +116,22 @@ struct Erase2 {
     @location(1) b: vec4<f32>,
 }
 
+fn standing_water(v: VOut) -> f32 {
+    if (G.wet < 0.5) {
+        return 0.0;
+    }
+    return smoothstep(0.02, 0.25, textureLoad(surface, vec2<i32>(v.clip.xy), 0).x);
+}
+
+fn erase_strength(v: VOut) -> f32 {
+    return clamp(coverage(v, v.clip) * v.shape.w, 0.0, 1.0);
+}
+
+// Settled paint and ink: always taken off (fs_smear puts the settled pigment
+// back into standing water).
 @fragment
 fn fs_erase2(v: VOut) -> Erase2 {
-    let e = vec4<f32>(0.0, 0.0, 0.0, clamp(coverage(v, v.clip) * v.shape.w, 0.0, 1.0));
+    let e = vec4<f32>(0.0, 0.0, 0.0, erase_strength(v));
     return Erase2(e, e);
 }
 
@@ -126,6 +143,23 @@ struct Erase3 {
 
 @fragment
 fn fs_erase3(v: VOut) -> Erase3 {
-    let e = vec4<f32>(0.0, 0.0, 0.0, clamp(coverage(v, v.clip) * v.shape.w, 0.0, 1.0));
+    // Paint and water in standing water are mostly pushed around, not removed.
+    let e = vec4<f32>(0.0, 0.0, 0.0, erase_strength(v) * (1.0 - 0.6 * standing_water(v)));
     return Erase3(e, e, e);
+}
+
+// The eraser in standing water: what fs_erase2 took off the settled layer is
+// lifted into the water and pushed along the stroke.
+@fragment
+fn fs_smear(v: VOut) -> WetOut {
+    let wet = standing_water(v);
+    let lift = erase_strength(v) * wet;
+    let c = coverage(v, v.clip) * wet;
+    let push = v.water_push.yz * c;
+    var o: WetOut;
+    o.water = vec4<f32>(0.0);
+    o.pigment = textureLoad(settled, vec2<i32>(v.clip.xy), 0) * lift;
+    o.ink = vec4<f32>(0.0);
+    o.flux = vec4<f32>(max(-push.x, 0.0), max(push.x, 0.0), max(-push.y, 0.0), max(push.y, 0.0));
+    return o;
 }

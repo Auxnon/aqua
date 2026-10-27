@@ -91,7 +91,9 @@ struct PaperParams {
 #[derive(Clone, Copy, Pod, Zeroable)]
 struct DabGlobals {
     canvas: [f32; 2],
-    _pad: [f32; 2],
+    /// 1 if the eraser can read the layer's surface water.
+    wet: f32,
+    _pad: f32,
 }
 
 /// Physical constants of the simulation, per step.
@@ -999,7 +1001,9 @@ impl Canvas {
         self.dirty_tiles.activate(&pending);
 
         // 1. Rasterise the dabs that arrived since last frame.
-        let dabs = std::mem::take(&mut self.pending);
+        let mut dabs = std::mem::take(&mut self.pending);
+        // Smears lift what the eraser took off, so they go after it, and in one batch.
+        dabs.sort_by_key(|d| d.0 == DabKind::Smear);
         if !dabs.is_empty() {
             self.draw_dabs(&dabs, &mut enc);
         }
@@ -1061,13 +1065,17 @@ impl Canvas {
         let raw: Vec<Dab> = dabs.iter().map(|d| d.1).collect();
         self.gpu.queue.write_buffer(&self.dab_buf, 0, bytemuck::cast_slice(&raw));
 
-        let globals = self.ring.push(&DabGlobals { canvas: [self.w as f32, self.h as f32], _pad: [0.0; 2] });
         let mut start = 0;
         while start < dabs.len() {
             let kind = dabs[start].0;
             let mut end = start;
             while end < dabs.len() && dabs[end].0 == kind {
                 end += 1;
+            }
+            // Smearing only means anything in wet paint.
+            if kind == DabKind::Smear && self.layers[idx].wet.is_none() {
+                start = end;
+                continue;
             }
             if kind == DabKind::Wet && self.layers[idx].wet.is_none() {
                 let ws = WetState::new(&self.gpu, &self.layers[idx], enc);
@@ -1081,7 +1089,7 @@ impl Canvas {
                     continue;
                 }
                 self.dirty_tiles.activate(&b);
-                let touched = if kind == DabKind::Wet { b.pad(WET_MARGIN).intersect(&full) } else { b };
+                let touched = if matches!(kind, DabKind::Wet | DabKind::Smear) { b.pad(WET_MARGIN).intersect(&full) } else { b };
                 if let Some(ws) = self.layers[idx].wet.as_mut() {
                     ws.activate(&touched, &full);
                     if kind == DabKind::Wet {
@@ -1090,28 +1098,44 @@ impl Canvas {
                 }
                 self.capture(idx, &touched, enc);
             }
-            self.draw_run(kind, start as u32..end as u32, globals, enc);
+            self.draw_run(kind, start as u32..end as u32, enc);
             start = end;
         }
     }
 
-    fn draw_run(&self, kind: DabKind, range: std::ops::Range<u32>, globals: crate::gpu::UBind, enc: &mut wgpu::CommandEncoder) {
+    fn draw_run(&mut self, kind: DabKind, range: std::ops::Range<u32>, enc: &mut wgpu::CommandEncoder) {
+        let wet = self.layers[self.active].wet.is_some();
+        let globals = self.ring.push(&DabGlobals { canvas: [self.w as f32, self.h as f32], wet: if wet { 1.0 } else { 0.0 }, _pad: 0.0 });
         let layer = &self.layers[self.active];
+        // The eraser reads surface water from the half-step copy, since the
+        // current one is one of the targets.
+        let water = layer.wet.as_ref().map_or(&self.zero_tile, |ws| &ws.water_alt);
         let (pipe, targets): (&wgpu::RenderPipeline, Vec<&Tex>) = match kind {
-            DabKind::Wet => {
+            DabKind::Wet | DabKind::Smear => {
                 let ws = layer.wet.as_ref().unwrap();
-                (&self.pipes.dab_wet, vec![&ws.water, &ws.pig, &ws.ink, &ws.flux])
+                let pipe = if kind == DabKind::Wet { &self.pipes.dab_wet } else { &self.pipes.dab_smear };
+                (pipe, vec![&ws.water, &ws.pig, &ws.ink, &ws.flux])
             }
             DabKind::Fixed => (&self.pipes.dab_fix, vec![&layer.fix]),
             DabKind::Erase => (&self.pipes.dab_erase2, vec![&layer.dep, &layer.fix]),
         };
-        let bg = bind(&self.gpu.device, pipe, &[(0, self.ring.res(globals)), (1, tv(&self.paper))]);
-        let mut passes = vec![(pipe, targets)];
+        // (pipeline, targets, whether it reads surface water)
+        let mut passes = vec![(pipe, targets, kind == DabKind::Smear)];
         if kind == DabKind::Erase
             && let Some(ws) = &layer.wet {
-                passes.push((&self.pipes.dab_erase3, vec![&ws.water, &ws.pig, &ws.ink]));
+                passes.push((&self.pipes.dab_erase3, vec![&ws.water, &ws.pig, &ws.ink], true));
             }
-        for (pipe, targets) in passes {
+        for (pipe, targets, reads_water) in passes {
+            // Bind groups from auto layouts only fit the pipeline they were made for.
+            let mut entries = vec![(0, self.ring.res(globals)), (1, tv(&self.paper))];
+            if reads_water {
+                entries.push((2, tv(water)));
+            }
+            // Pigment settled before the eraser went over it (the previous step's copy).
+            if let (DabKind::Smear, Some(ws)) = (kind, &layer.wet) {
+                entries.push((3, tv(&ws.dep_alt)));
+            }
+            let bg = bind(&self.gpu.device, pipe, &entries);
             let atts: Vec<Option<wgpu::RenderPassColorAttachment>> = targets
                 .iter()
                 .map(|t| {

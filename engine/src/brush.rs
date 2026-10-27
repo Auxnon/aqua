@@ -97,6 +97,8 @@ pub enum DabKind {
     /// permanent ink
     Fixed,
     Erase,
+    /// the eraser in standing water: lifts settled pigment and pushes it along
+    Smear,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -400,8 +402,13 @@ impl Stroke {
                 push_ink(dab, s.pigment.map(|v| v * amt), s.bleed, density * soak, out);
             }
             Tool::Eraser => {
+                // Erases dry paint. Where water is standing, the paint it takes off is
+                // lifted into the water instead and pushed along the stroke (a smear).
                 dab.shape[3] = (s.strength * density * 1.5).clamp(0.0, 1.0);
                 out.push((DabKind::Erase, dab));
+                let push = 2.0 * s.strength * density;
+                dab.water_push = [0.0, self.dir[0] * push, self.dir[1] * push, 0.0];
+                out.push((DabKind::Smear, dab));
             }
         }
     }

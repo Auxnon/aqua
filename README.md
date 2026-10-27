@@ -30,7 +30,9 @@ ink feathering into a wet wash, and a bloom from clear water in a damp rose wash
   wet, and becomes permanent as it dries. Watercolour never moves dry or pen ink.
   A **Splatter** setting throws droplets on quick pressure jabs and flicks, the
   way a quill or dip pen does, even on dry paper.
-- **Eraser** and **eyedropper**.
+- **Eraser** and **eyedropper**. On dry or damp paint the eraser erases. Where
+  water is still standing it lifts the paint and smears it along the stroke, the
+  way a dry brush or tissue drags through a wet wash.
 - **Layers.** Each layer has opacity, visibility, reorder, clear, delete, its
   own drying speed (from 4x faster down to 100x slower than normal), a **Flood
   flow** setting, and a "dry now" button (also in the top bar while the active

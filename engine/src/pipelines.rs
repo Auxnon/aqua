@@ -21,6 +21,7 @@ pub struct Pipelines {
     pub dab_fix: wgpu::RenderPipeline,
     pub dab_erase2: wgpu::RenderPipeline,
     pub dab_erase3: wgpu::RenderPipeline,
+    pub dab_smear: wgpu::RenderPipeline,
 }
 
 fn module(device: &wgpu::Device, label: &str, src: &str) -> wgpu::ShaderModule {
@@ -96,6 +97,7 @@ impl Pipelines {
             dab_fix: dab_pipeline(device, &dab, "fs_fix", 1, add),
             dab_erase2: dab_pipeline(device, &dab, "fs_erase2", 2, erase),
             dab_erase3: dab_pipeline(device, &dab, "fs_erase3", 3, erase),
+            dab_smear: dab_pipeline(device, &dab, "fs_smear", 4, add),
         }
     }
 }
