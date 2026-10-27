@@ -40,6 +40,8 @@ import app.aqua.engine.CanvasInfo
 import app.aqua.engine.LayerOp
 import app.aqua.engine.Native
 import app.aqua.ui.theme.AquaColors
+import kotlin.math.ln
+import kotlin.math.pow
 
 @Composable
 fun LayersPanel(engine: Long, info: CanvasInfo, onChanged: () -> Unit, modifier: Modifier = Modifier) {
@@ -94,11 +96,16 @@ fun LayersPanel(engine: Long, info: CanvasInfo, onChanged: () -> Unit, modifier:
         Spacer(Modifier.size(8.dp))
         // Local slider state so dragging stays smooth between engine round trips.
         var opacity by remember(layer.id) { mutableFloatStateOf(layer.opacity) }
-        var drying by remember(layer.id) { mutableFloatStateOf(layer.drying) }
+        var drying by remember(layer.id) { mutableFloatStateOf(dryingToSlider(layer.drying)) }
+        var flow by remember(layer.id) { mutableFloatStateOf(layer.flow) }
         LabeledSlider("Opacity", opacity, { opacity = it; op(LayerOp.OPACITY, info.active, it) })
         LabeledSlider(
-            "Drying speed", drying, { drying = it; op(LayerOp.DRYING_SPEED, info.active, it) },
-            range = 0.25f..4f, format = { "%.2fx".format(it) },
+            "Drying speed", drying, { drying = it; op(LayerOp.DRYING_SPEED, info.active, sliderToDrying(it)) },
+            format = { formatDrying(sliderToDrying(it)) },
+        )
+        LabeledSlider(
+            "Flood flow  calm → wild", flow, { flow = it; op(LayerOp.FLOW, info.active, it) },
+            format = { if (it < 0.02f) "calm" else "${(it * 100).toInt()}%" },
         )
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             RoundButton(Icons.Outlined.Air, "Dry layer now", enabled = layer.wet) { op(LayerOp.DRY, info.active) }
@@ -108,4 +115,18 @@ fun LayersPanel(engine: Long, info: CanvasInfo, onChanged: () -> Unit, modifier:
             RoundButton(Icons.Outlined.Delete, "Delete layer", enabled = n > 1) { op(LayerOp.REMOVE, info.active) }
         }
     }
+}
+
+// Drying speed runs on a log scale from 100x slower than normal (a wash stays
+// workable for most of an hour) to 4x faster.
+private const val MIN_DRYING = 0.01f
+private const val MAX_DRYING = 4f
+
+private fun sliderToDrying(t: Float) = MIN_DRYING * (MAX_DRYING / MIN_DRYING).pow(t)
+
+private fun dryingToSlider(d: Float) = (ln(d.coerceIn(MIN_DRYING, MAX_DRYING) / MIN_DRYING) / ln(MAX_DRYING / MIN_DRYING))
+
+private fun formatDrying(d: Float) = when {
+    d >= 0.995f -> "%.1fx".format(d)
+    else -> "1/%.0f".format(1f / d)
 }

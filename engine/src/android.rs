@@ -208,6 +208,7 @@ fn handle_cmd(engine: &mut Engine, window: &mut Option<NativeWindow>, c: Cmd) ->
                     7 => c.dry_layer(i),
                     8 => c.clear_layer(i),
                     9 => c.set_layer_drying(i, f),
+                    10 => c.set_layer_flow(i, f),
                     _ => {}
                 }
                 engine.needs_present = true;
@@ -324,11 +325,11 @@ pub extern "system" fn Java_app_aqua_engine_Native_setView(mut env: JNIEnv, _c: 
     }
 }
 
-/// params: size, K r, K g, K b, S, load, water, softness, bristle, bleed, strength, pressureSize, pressureFlow, smoothing
+/// params: size, K r, K g, K b, S, load, water, softness, bristle, bleed, strength, pressureSize, pressureFlow, smoothing, splatter
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_app_aqua_engine_Native_setBrush(mut env: JNIEnv, _c: JClass, h: jlong, tool: jint, params: JFloatArray) {
     let p = floats(&mut env, &params);
-    if p.len() < 14 {
+    if p.len() < 15 {
         return;
     }
     send(h, Cmd::Brush(BrushSettings {
@@ -344,6 +345,7 @@ pub extern "system" fn Java_app_aqua_engine_Native_setBrush(mut env: JNIEnv, _c:
         pressure_size: p[11],
         pressure_flow: p[12],
         smoothing: p[13],
+        splatter: p[14],
     }));
 }
 
@@ -351,7 +353,7 @@ pub extern "system" fn Java_app_aqua_engine_Native_setBrush(mut env: JNIEnv, _c:
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_app_aqua_engine_Native_stroke(mut env: JNIEnv, _c: JClass, h: jlong, phase: jint, pts: JFloatArray) {
     let v = floats(&mut env, &pts);
-    let p: Vec<InputPoint> = v.chunks_exact(3).map(|c| InputPoint { x: c[0], y: c[1], pressure: c[2] }).collect();
+    let p: Vec<InputPoint> = v.as_chunks::<3>().0.iter().map(|c| InputPoint { x: c[0], y: c[1], pressure: c[2] }).collect();
     if !p.is_empty() || phase >= 2 {
         send(h, Cmd::Stroke(phase, p));
     }
@@ -385,7 +387,7 @@ pub extern "system" fn Java_app_aqua_engine_Native_closeCanvas(_env: JNIEnv, _c:
     ask(h, Cmd::Close);
 }
 
-/// op: 0 add, 1 remove, 2 move to `value`, 3 select, 4 opacity, 5 visible, 6 rename, 7 dry, 8 clear, 9 drying speed
+/// op: 0 add, 1 remove, 2 move to `value`, 3 select, 4 opacity, 5 visible, 6 rename, 7 dry, 8 clear, 9 drying speed, 10 flow
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_app_aqua_engine_Native_layerOp(mut env: JNIEnv, _c: JClass, h: jlong, op: jint, index: jint, value: jfloat, name: JString) {
     let n = if name.is_null() { None } else { Some(jstr(&mut env, &name)) };

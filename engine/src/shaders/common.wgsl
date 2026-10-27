@@ -24,11 +24,13 @@ struct SimParams {
     ink_fix: f32,
     staining: f32,
     edge_drift: f32,
-    _pad1: f32,
-    _pad2: f32,
+    // How unruly deep water gets (the layer's Flow setting), and simulation time.
+    chaos: f32,
+    time: f32,
 }
 
 const EPS_WATER: f32 = 1e-3;
+const MAX_WATER: f32 = 3.0;
 const DIAG: f32 = 0.70710678;
 
 // Sparse simulation: only 32x32 tiles near wet paint are computed. Each tile is

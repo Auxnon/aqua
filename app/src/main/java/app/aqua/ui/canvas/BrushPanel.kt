@@ -41,6 +41,10 @@ fun BrushPanel(tool: Tool, params: BrushParams, onChange: (BrushParams) -> Unit,
                     format = { if (it < 0.02f) "pen" else "${(it * 100).toInt()}%" },
                 )
                 LabeledSlider("Density", params.load, { onChange(params.copy(load = it)) })
+                LabeledSlider(
+                    "Splatter (quick flicks)", params.splatter, { onChange(params.copy(splatter = it)) },
+                    format = { if (it < 0.02f) "off" else "${(it * 100).toInt()}%" },
+                )
                 LabeledSlider("Pressure → size", params.pressureSize, { onChange(params.copy(pressureSize = it)) })
                 LabeledSlider("Smoothing", params.smoothing, { onChange(params.copy(smoothing = it)) })
             }

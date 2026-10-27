@@ -62,4 +62,5 @@ object LayerOp {
     const val DRY = 7
     const val CLEAR = 8
     const val DRYING_SPEED = 9
+    const val FLOW = 10
 }

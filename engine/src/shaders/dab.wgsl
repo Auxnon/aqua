@@ -93,7 +93,9 @@ fn fs_wet(v: VOut) -> WetOut {
     let c = coverage(v, v.clip);
     let push = v.water_push.yz * c;
     var o: WetOut;
-    o.water = vec4<f32>(v.water_push.x * c, 0.0, 0.0, 0.0);
+    // z marks freshly delivered water; settle_water uses it to stop a brush
+    // flooding paper that is already soaked.
+    o.water = vec4<f32>(v.water_push.x * c, 0.0, v.water_push.x * c, 0.0);
     o.pigment = v.pigment * c;
     o.ink = v.ink * c;
     o.flux = vec4<f32>(max(-push.x, 0.0), max(push.x, 0.0), max(-push.y, 0.0), max(push.y, 0.0));

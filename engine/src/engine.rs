@@ -205,6 +205,7 @@ impl Engine {
         let max_steps = if self.interactive() { 2 } else { 4 };
         let mut changed = self.needs_present;
         if let Some(c) = self.canvas.as_mut() {
+            c.dwell(dt);
             self.step_debt += dt * STEPS_PER_SECOND;
             let steps = (self.step_debt.floor() as u32).min(max_steps);
             self.step_debt = (self.step_debt - steps as f32).min(1.0);

@@ -89,7 +89,7 @@ fun CanvasScreen(dir: File, onExit: () -> Unit) {
         mutableStateMapOf(
             Tool.Watercolor to BrushParams(size = 28f),
             Tool.Water to BrushParams(size = 40f, water = 0.8f, softness = 0.3f),
-            Tool.Ink to BrushParams(size = 3f, load = 0.8f, softness = 0.05f, bristle = 0f, pressureSize = 0.8f, smoothing = 0.5f),
+            Tool.Ink to BrushParams(size = 3f, load = 0.8f, softness = 0.05f, bristle = 0f, pressureSize = 0.8f, smoothing = 0.5f, splatter = 0.35f),
             Tool.Eraser to BrushParams(size = 40f, softness = 0.4f, bristle = 0f),
         )
     }

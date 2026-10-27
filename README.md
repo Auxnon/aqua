@@ -21,13 +21,19 @@ ink feathering into a wet wash, and a bloom from clear water in a damp rose wash
   that only catches the paper's peaks.
 - **Clear water brush.** Wets paper, re-lifts unfixed pigment, and makes
   blooms (backruns) in damp washes.
+- **A resting brush keeps bleeding.** Hold the brush still and it keeps
+  draining into the paper, faster the harder you press. Watercolour spreads into
+  a wet blot that dries with a dark rim, and ink blots grow.
 - **Ink.** One slider goes from a technical pen to India ink. Pen ink is
   permanent as soon as it's laid down. India ink feathers along the paper
   fibres when the paper is wet, can be smeared by watercolour while it's still
   wet, and becomes permanent as it dries. Watercolour never moves dry or pen ink.
+  A **Splatter** setting throws droplets on quick pressure jabs and flicks, the
+  way a quill or dip pen does, even on dry paper.
 - **Eraser** and **eyedropper**.
 - **Layers.** Each layer has opacity, visibility, reorder, clear, delete, its
-  own drying speed, and a "dry now" button (also in the top bar while the active
+  own drying speed (from 4x faster down to 100x slower than normal), a **Flood
+  flow** setting, and a "dry now" button (also in the top bar while the active
   layer is wet). Layers stack with Kubelka-Munk optics, so glazes over a dry
   layer behave like real transparent paint.
 - **Mixing palette**, in the style of FiftyThree's Paper. Dab pigments into a
@@ -52,7 +58,12 @@ Each simulation step runs four compute passes (`engine/src/shaders/`):
 
 1. `flux.wgsl`: virtual-pipe shallow water. The paper's height pushes water
    into the valleys, and surface tension stops a thin film from creeping onto
-   dry paper.
+   dry paper. Flooded water (scrubbing one spot with lots of water) is governed
+   by the layer's Flood flow: it keeps its momentum, is steered by the buckles
+   (cockles) that form in soaked paper, and finds drifting channels, so it runs
+   and veins instead of sitting as a round puddle. Ordinary strokes are too
+   shallow to be affected. A brush stops releasing water into paper that is
+   already flooded.
 2. `transport.wgsl`: conservatively moves water, suspended pigment and wet ink
    along the fluxes.
 3. `settle_water.wgsl`: the paper absorbs water, capillary action wicks it
@@ -69,6 +80,9 @@ What keeps it fast:
 - Only 32×32 tiles near wet paint are simulated, using a tile list for dispatch
   and a mask for neighbour lookups. Only the tiles that changed are
   recomposited.
+- The simulated area grows when water spreads past the stroke that made it,
+  and the new area is recorded in that stroke's undo step, so undo still removes
+  everything.
 - Tiles drop out of the simulation as they dry. A per-tile wetness probe runs
   every 20 steps. Once a tile is dry and no wet paint is within two tiles, its
   last suspended pigment settles and it stops being simulated. It comes back if
@@ -103,7 +117,7 @@ adb install app/build/outputs/apk/debug/app-debug.apk
 
 With [`just`](https://github.com/casey/just), `just install` does the build and
 install in one step (`just` lists the other recipes: `run`, `release`, `test`,
-`paint-test`, `bench`, `logs`, `clean`).
+`paint-test`, `brush-test`, `bench`, `logs`, `clean`).
 
 Gradle runs on JDK 21 (`gradle/gradle-daemon-jvm.properties`). It finds an
 installed JDK 21 or downloads one.
@@ -116,6 +130,7 @@ The engine runs headless on any desktop GPU:
 cd engine
 cargo test --release --lib
 cargo run --release --example paint_test -- /tmp/aqua_out   # writes PNGs of every brush and effect
+cargo run --release --example brush_test -- /tmp/aqua_brush  # resting brush, splatter, calm vs wild floods
 cargo run --release --example bench                         # simulation timings at 2048×2048, and a wash drying
 ```
 

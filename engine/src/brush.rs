@@ -40,6 +40,8 @@ pub struct BrushSettings {
     pub bleed: f32,
     /// Eraser strength.
     pub strength: f32,
+    /// Ink only: droplets thrown off by quick pressure flicks, like a quill.
+    pub splatter: f32,
     pub pressure_size: f32,
     pub pressure_flow: f32,
     pub smoothing: f32,
@@ -57,6 +59,7 @@ impl Default for BrushSettings {
             bristle: 0.5,
             bleed: 0.0,
             strength: 0.8,
+            splatter: 0.0,
             pressure_size: 0.6,
             pressure_flow: 0.5,
             smoothing: 0.3,
@@ -103,6 +106,9 @@ pub struct InputPoint {
     pub pressure: f32,
 }
 
+/// How long the brush must rest before it starts soaking paint into the paper.
+const DWELL_DELAY: f32 = 0.08;
+
 pub struct Stroke {
     settings: BrushSettings,
     seed: f32,
@@ -114,6 +120,14 @@ pub struct Stroke {
     paint_res: f32,
     dir: [f32; 2],
     started: bool,
+    /// Seconds since the brush last moved far enough to lay a dab.
+    still: f32,
+    /// Seconds spent soaking at the current spot; the blot grows with it.
+    dwell: f32,
+    prev_raw: Option<InputPoint>,
+    /// Splatter energy built up by pressure jumps and fast flicks.
+    flick: f32,
+    rng: u32,
 }
 
 impl Stroke {
@@ -129,6 +143,11 @@ impl Stroke {
             paint_res: 1.0,
             dir: [1.0, 0.0],
             started: false,
+            still: 0.0,
+            dwell: 0.0,
+            prev_raw: None,
+            flick: 0.0,
+            rng: seed.wrapping_mul(747796405).wrapping_add(2891336453) | 1,
         }
     }
 
@@ -141,8 +160,16 @@ impl Stroke {
         (radius * frac).max(0.5)
     }
 
+    fn rand(&mut self) -> f32 {
+        self.rng ^= self.rng << 13;
+        self.rng ^= self.rng >> 17;
+        self.rng ^= self.rng << 5;
+        (self.rng >> 8) as f32 / (1u32 << 24) as f32
+    }
+
     /// Feeds one input sample; appends the dabs it produces.
     pub fn add(&mut self, p: InputPoint, out: &mut Vec<(DabKind, Dab)>) {
+        self.track_flick(p, out);
         if !self.started {
             self.started = true;
             self.smoothed = p;
@@ -164,7 +191,84 @@ impl Stroke {
     /// Lets the smoothed brush catch up with the pen when it lifts.
     pub fn finish(&mut self, p: InputPoint, out: &mut Vec<(DabKind, Dab)>) {
         if self.started {
+            // Flicking the pen off the paper throws ink ahead of the stroke.
+            if let Some(q) = self.prev_raw {
+                let r = self.radius(q.pressure).max(1.5);
+                let speed = ((p.x - q.x).powi(2) + (p.y - q.y).powi(2)).sqrt() / r;
+                self.flick += (speed - 4.0).max(0.0) * 0.12;
+                if self.flick > 0.3 {
+                    let e = self.flick;
+                    self.splatter(q, e, 0.6, out);
+                }
+            }
             self.walk_to(InputPoint { pressure: self.smoothed.pressure, ..p }, out);
+        }
+    }
+
+    /// Called every frame while the pen is down. A resting brush keeps soaking
+    /// paint (or ink, or water) into the paper, faster the harder it is pressed,
+    /// so the mark slowly blooms outwards.
+    pub fn dwell(&mut self, dt: f32, out: &mut Vec<(DabKind, Dab)>) {
+        if !self.started || self.settings.tool == Tool::Eraser {
+            return;
+        }
+        self.still += dt;
+        if self.still < DWELL_DELAY {
+            return;
+        }
+        self.dwell += dt;
+        let p = InputPoint { pressure: self.smoothed.pressure, ..self.last };
+        let pr = p.pressure.clamp(0.0, 1.0);
+        let rate = 0.25 + 1.75 * pr * pr;
+        // The blot widens a little; most of the spread is the extra water running
+        // outwards in the simulation, which gives it a ragged, wet edge.
+        let grow = 1.0 + (self.dwell * (0.1 + 0.3 * pr)).min(0.35);
+        self.water_res *= (-dt * 0.12).exp();
+        self.paint_res *= (-dt * 0.09).exp();
+        self.emit_with(p, 0.0, dt * rate, grow, 2.5, out);
+    }
+
+    /// Builds up splatter energy from sudden pressure changes and very fast moves.
+    fn track_flick(&mut self, p: InputPoint, out: &mut Vec<(DabKind, Dab)>) {
+        if self.settings.tool != Tool::Ink || self.settings.splatter <= 0.0 {
+            return;
+        }
+        if let Some(q) = self.prev_raw {
+            let dp = (p.pressure - q.pressure).abs();
+            let r = self.radius(p.pressure).max(1.5);
+            let speed = ((p.x - q.x).powi(2) + (p.y - q.y).powi(2)).sqrt() / r;
+            self.flick = self.flick * 0.85 + (dp - 0.04).max(0.0) * 8.0 + (speed - 6.0).max(0.0) * 0.1;
+            if self.flick > 0.35 {
+                let e = self.flick;
+                // A jab with little motion throws drops all round; a fast flick throws them forwards.
+                let spread = if speed < 1.0 { std::f32::consts::PI } else { 0.9 };
+                self.splatter(p, e, spread, out);
+                self.flick = 0.0;
+            }
+        }
+        self.prev_raw = Some(p);
+    }
+
+    /// Throws ink droplets around `p`, mostly along the stroke direction.
+    fn splatter(&mut self, p: InputPoint, energy: f32, spread: f32, out: &mut Vec<(DabKind, Dab)>) {
+        let s = self.settings;
+        let n = (energy * 6.0 * s.splatter).ceil().min(12.0) as u32;
+        let r = self.radius(p.pressure).max(1.5);
+        let base = self.dir[1].atan2(self.dir[0]);
+        let reach = (0.5 + energy).min(2.5);
+        for _ in 0..n {
+            let a = base + (self.rand() * 2.0 - 1.0) * spread;
+            let d = r * (1.5 + self.rand() * self.rand() * 14.0) * reach;
+            let radius = r * (0.12 + 0.5 * self.rand() * self.rand());
+            let amt = 2.0 * (0.4 + 0.6 * s.load) * (0.6 + 0.6 * self.rand());
+            let dab = Dab {
+                pos_radius: [p.x + a.cos() * d, p.y + a.sin() * d, radius.max(0.6), self.rand() * std::f32::consts::TAU],
+                water_push: [0.0; 4],
+                pigment: [0.0; 4],
+                ink: [0.0; 4],
+                shape: [(1.0 / radius).clamp(0.08, 0.5), 0.0, self.seed, 0.0],
+            };
+            push_ink(dab, s.pigment.map(|v| v * amt), s.bleed, 1.0, out);
         }
     }
 
@@ -198,6 +302,8 @@ impl Stroke {
                 pressure: self.last.pressure + (target.pressure - self.last.pressure) * t,
             };
             self.emit(pt, step, out);
+            self.still = 0.0;
+            self.dwell = 0.0;
         }
         self.last = target;
     }
@@ -209,11 +315,19 @@ impl Stroke {
     }
 
     fn emit(&mut self, p: InputPoint, step: f32, out: &mut Vec<(DabKind, Dab)>) {
-        let s = self.settings;
-        let radius = self.radius(p.pressure);
-        let flow = 1.0 - s.pressure_flow + s.pressure_flow * p.pressure.clamp(0.0, 1.0);
         // Amount per dab is scaled by spacing so the laid-down density doesn't depend on it.
+        let radius = self.radius(p.pressure);
         let density = self.spacing(radius) / radius;
+        self.emit_with(p, step, density, 1.0, 1.0, out);
+    }
+
+    /// Lays one dab. `density` is how much of a full coat it deposits; `grow`
+    /// widens it and `soak` multiplies the water released (both for a resting
+    /// brush's spreading blot: a brush held to the paper drains into it).
+    fn emit_with(&mut self, p: InputPoint, step: f32, density: f32, grow: f32, soak: f32, out: &mut Vec<(DabKind, Dab)>) {
+        let s = self.settings;
+        let radius = self.radius(p.pressure) * grow;
+        let flow = 1.0 - s.pressure_flow + s.pressure_flow * p.pressure.clamp(0.0, 1.0);
         let angle = self.dir[1].atan2(self.dir[0]);
 
         // The reservoir empties with distance; more water lets a stroke go further.
@@ -234,7 +348,7 @@ impl Stroke {
                 let water = s.water * self.water_res;
                 let amt = s.load * self.paint_res * flow * density * 1.2;
                 dab.water_push = [
-                    (0.15 + water) * 0.9 * flow * density,
+                    (0.15 + water) * 0.9 * flow * density * soak,
                     self.dir[0] * 0.06 * water * density,
                     self.dir[1] * 0.06 * water * density,
                     (1.0 - water * 1.6).clamp(0.0, 1.0) * 0.9,
@@ -244,33 +358,39 @@ impl Stroke {
             }
             Tool::Water => {
                 let water = s.water.max(0.1) * self.water_res;
-                dab.water_push = [water * 1.1 * flow * density, self.dir[0] * 0.08 * water * density, self.dir[1] * 0.08 * water * density, 0.0];
+                dab.water_push = [water * 1.1 * flow * density * soak, self.dir[0] * 0.08 * water * density, self.dir[1] * 0.08 * water * density, 0.0];
                 out.push((DabKind::Wet, dab));
             }
             Tool::Ink => {
                 // Ink is dense: several times the concentration of a watercolour load.
                 let amt = 2.5 * flow * density * (0.4 + 0.6 * s.load);
-                let ink = s.pigment.map(|v| v * amt);
-                let bleed = s.bleed.clamp(0.0, 1.0);
-                dab.shape[0] = (1.2 / radius).clamp(0.02, 0.5) + bleed * 0.15;
+                // A pen blot spreads less than wet ink feathers.
+                dab.pos_radius[2] = self.radius(p.pressure) * grow.sqrt();
+                dab.shape[0] = (1.2 / radius).clamp(0.02, 0.5) + s.bleed.clamp(0.0, 1.0) * 0.15;
                 dab.shape[1] = 0.0;
-                if bleed < 0.999 {
-                    let mut d = dab;
-                    d.ink = ink.map(|v| v * (1.0 - bleed));
-                    out.push((DabKind::Fixed, d));
-                }
-                if bleed > 0.001 {
-                    let mut d = dab;
-                    d.ink = ink.map(|v| v * bleed);
-                    // India ink carries its own water, which is what lets it feather.
-                    d.water_push = [bleed * 0.35 * density, 0.0, 0.0, 0.0];
-                    out.push((DabKind::Wet, d));
-                }
+                push_ink(dab, s.pigment.map(|v| v * amt), s.bleed, density * soak, out);
             }
             Tool::Eraser => {
                 dab.shape[3] = (s.strength * density * 1.5).clamp(0.0, 1.0);
                 out.push((DabKind::Erase, dab));
             }
         }
+    }
+}
+
+/// Splits ink between permanent (pen) and wet (India ink, carrying its own water
+/// so it can feather) according to `bleed`. `water` scales the ink's own water.
+fn push_ink(dab: Dab, ink: Pigment, bleed: f32, water: f32, out: &mut Vec<(DabKind, Dab)>) {
+    let bleed = bleed.clamp(0.0, 1.0);
+    if bleed < 0.999 {
+        let mut d = dab;
+        d.ink = ink.map(|v| v * (1.0 - bleed));
+        out.push((DabKind::Fixed, d));
+    }
+    if bleed > 0.001 {
+        let mut d = dab;
+        d.ink = ink.map(|v| v * bleed);
+        d.water_push = [bleed * 0.35 * water, 0.0, 0.0, 0.0];
+        out.push((DabKind::Wet, d));
     }
 }

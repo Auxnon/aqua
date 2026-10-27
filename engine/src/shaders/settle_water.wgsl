@@ -15,7 +15,12 @@ fn main(@builtin(workgroup_id) wg: vec3<u32>, @builtin(local_invocation_id) li: 
     }
     let w = textureLoad(water_in, p, 0);
     let pp = textureLoad(paper, p, 0);
-    var h = w.x;
+    // A brush can't flood paper past MAX_WATER: once the surface is that wet it
+    // stops releasing water. Only water the brush just delivered (w.z, written by
+    // the dabs) is held back; water flowing in from elsewhere is untouched. This
+    // also keeps depths where 16-bit storage still resolves a step's flow and
+    // evaporation; much deeper water would freeze in place.
+    var h = w.x - clamp(w.x - MAX_WATER, 0.0, w.z);
     let s0 = w.y;
     var s = s0;
 

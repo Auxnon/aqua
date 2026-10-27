@@ -30,6 +30,10 @@ test:
 paint-test out="/tmp/aqua_out":
     cd engine && cargo run --release --example paint_test -- {{out}}
 
+# Resting brush, ink splatter and calm vs wild floods, written as PNGs to `out`
+brush-test out="/tmp/aqua_brush":
+    cd engine && cargo run --release --example brush_test -- {{out}}
+
 # Time the simulation at 2048×2048
 bench:
     cd engine && cargo run --release --example bench

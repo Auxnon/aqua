@@ -94,6 +94,20 @@ impl UndoStack {
         }
     }
 
+    /// The newest entry, if it is `layer_id`'s pixel entry (open or closed) and
+    /// nothing is waiting to be redone. Water spreading after a stroke belongs to
+    /// that stroke, so tiles it reaches can still be captured into it: they have
+    /// not changed since the stroke began.
+    pub fn latest_pixels(&mut self, layer_id: u32) -> Option<&mut StrokeEntry> {
+        if !self.redo.is_empty() {
+            return None;
+        }
+        match self.undo.last_mut() {
+            Some(Entry::Pixels(e)) if e.layer_id == layer_id => Some(e),
+            _ => None,
+        }
+    }
+
     pub fn total_bytes(&self) -> u64 {
         self.undo.iter().chain(self.redo.iter()).map(|e| e.bytes()).sum()
     }

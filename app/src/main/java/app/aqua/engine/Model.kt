@@ -35,10 +35,11 @@ data class BrushParams(
     val pressureSize: Float = 0.6f,
     val pressureFlow: Float = 0.5f,
     val smoothing: Float = 0.3f,
+    val splatter: Float = 0f,
 ) {
     fun toArray(p: Pigment) = floatArrayOf(
         size, p.k[0], p.k[1], p.k[2], p.k[3], load, water, softness, bristle, bleed, strength,
-        pressureSize, pressureFlow, smoothing,
+        pressureSize, pressureFlow, smoothing, splatter,
     )
 }
 
@@ -50,6 +51,7 @@ data class LayerInfo(
     val wet: Boolean,
     val wetness: Float,
     val drying: Float,
+    val flow: Float,
 )
 
 data class CanvasInfo(
@@ -76,6 +78,7 @@ data class CanvasInfo(
                     wet = l.getBoolean("wet"),
                     wetness = l.getDouble("wetness").toFloat(),
                     drying = l.getDouble("drying").toFloat(),
+                    flow = l.optDouble("flow", 0.5).toFloat(),
                 )
             }
             return CanvasInfo(

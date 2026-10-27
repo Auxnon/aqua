@@ -26,11 +26,17 @@ struct LayerMeta {
     visible: bool,
     #[serde(default = "one")]
     drying: f32,
+    #[serde(default = "default_flow")]
+    flow: f32,
     wet_rect: Option<[i32; 4]>,
 }
 
 fn one() -> f32 {
     1.0
+}
+
+fn default_flow() -> f32 {
+    crate::canvas::DEFAULT_FLOW
 }
 
 #[derive(Serialize, Deserialize)]
@@ -59,7 +65,7 @@ pub fn save(canvas: &mut Canvas, dir: &Path) -> Result<(), String> {
             [ws.rect.x0, ws.rect.y0, ws.rect.x1, ws.rect.y1]
         });
         write_atomic(&dir.join(format!("layer_{}.bin", l.id)), &lz4_flex::compress_prepend_size(&raw))?;
-        layers.push(LayerMeta { id: l.id, name: l.name.clone(), opacity: l.opacity, visible: l.visible, drying: l.drying, wet_rect });
+        layers.push(LayerMeta { id: l.id, name: l.name.clone(), opacity: l.opacity, visible: l.visible, drying: l.drying, flow: l.flow, wet_rect });
     }
     let meta = Meta { version: VERSION, width: canvas.w, height: canvas.h, paper: canvas.paper_spec, active: canvas.active, layers };
     // Drop files of layers that no longer exist.
@@ -90,6 +96,7 @@ pub fn load(gpu: Arc<crate::gpu::Gpu>, pipes: Arc<Pipelines>, dir: &Path) -> Res
         l.opacity = lm.opacity;
         l.visible = lm.visible;
         l.drying = lm.drying;
+        l.flow = lm.flow;
         let raw = fs::read(dir.join(format!("layer_{}.bin", lm.id))).ok().and_then(|b| lz4_flex::decompress_size_prepended(&b).ok());
         if let Some(raw) = raw
             && raw.len() >= tex_bytes * 2 {
