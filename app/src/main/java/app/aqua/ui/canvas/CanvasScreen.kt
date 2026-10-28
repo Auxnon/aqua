@@ -1,9 +1,11 @@
 package app.aqua.ui.canvas
 
+import android.app.Activity
 import android.content.ContentValues
 import android.graphics.BitmapFactory
 import android.content.Context
 import android.provider.MediaStore
+import android.view.WindowManager
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
@@ -133,6 +135,20 @@ fun CanvasScreen(dir: File, onExit: (Arrival?) -> Unit) {
         while (true) {
             refresh()
             delay(500)
+        }
+    }
+
+    // The paper turns back against the screen when the device turns, so the
+    // system's own rotation animation would turn it twice. Seamless rotation
+    // (made for camera viewfinders) skips that, and only the controls move.
+    DisposableEffect(Unit) {
+        val window = (context as? Activity)?.window
+        val before = window?.attributes?.rotationAnimation
+        window?.attributes = window.attributes.apply {
+            rotationAnimation = WindowManager.LayoutParams.ROTATION_ANIMATION_SEAMLESS
+        }
+        onDispose {
+            if (window != null && before != null) window.attributes = window.attributes.apply { rotationAnimation = before }
         }
     }
 

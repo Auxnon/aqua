@@ -30,14 +30,23 @@ impl Gpu {
     // kept so native and web share one type.
     #[cfg_attr(target_arch = "wasm32", allow(clippy::arc_with_non_send_sync))]
     pub async fn request(instance: wgpu::Instance, surface: Option<&wgpu::Surface<'_>>) -> Result<Arc<Self>, String> {
-        let adapter = (instance.request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::HighPerformance,
-            force_fallback_adapter: false,
-            compatible_surface: surface,
-            apply_limit_buckets: false,
-        }))
-        .await
-        .map_err(|e| format!("no GPU adapter: {e}"))?;
+        // Some drivers (and browsers) only answer a request without a power preference.
+        let mut adapter = Err(String::new());
+        for power_preference in [wgpu::PowerPreference::HighPerformance, wgpu::PowerPreference::None] {
+            adapter = instance
+                .request_adapter(&wgpu::RequestAdapterOptions {
+                    power_preference,
+                    force_fallback_adapter: false,
+                    compatible_surface: surface,
+                    apply_limit_buckets: false,
+                })
+                .await
+                .map_err(|e| format!("no GPU adapter: {e}"));
+            if adapter.is_ok() {
+                break;
+            }
+        }
+        let adapter = adapter?;
         log::info!("aqua: using adapter {:?}", adapter.get_info());
 
         let alimits = adapter.limits();

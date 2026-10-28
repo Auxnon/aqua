@@ -66,8 +66,12 @@ main().catch((e) => {
   galleryRoot.replaceChildren(
     h('div', { class: 'unsupported' },
       h('h1', {}, 'Aqua'),
-      h('p', {}, 'Aqua paints on the GPU with WebGPU, which this browser doesn\'t offer.'),
-      h('p', { class: 'caption' }, 'Try a recent Chrome, Edge or Safari, or Firefox on Windows.'),
+      navigator.gpu
+        ? h('p', {}, 'Aqua couldn\'t start on this computer\'s GPU through WebGPU.')
+        : h('p', {}, 'Aqua paints on the GPU with WebGPU, which this browser doesn\'t offer.'),
+      h('p', { class: 'caption' }, navigator.gpu
+        ? 'Check that WebGPU is hardware accelerated in chrome://gpu, or try chrome://flags/#enable-unsafe-webgpu.'
+        : 'Try a recent Chrome, Edge or Safari, or Firefox on Windows.'),
       h('p', { class: 'caption mono' }, String(e?.message ?? e)),
     ),
   );
