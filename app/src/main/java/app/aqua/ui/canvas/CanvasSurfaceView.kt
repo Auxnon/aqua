@@ -52,6 +52,8 @@ class CanvasSurfaceView(context: Context, private val engine: Long) : SurfaceVie
     private var rotation = -1
     private var viewW = 0
     private var viewH = 0
+    // How far the view has been turned back against the device turning, in degrees.
+    private var turn = 0f
     private val view = Matrix()
     private val inverse = Matrix()
     private val tmp = FloatArray(2)
@@ -116,6 +118,7 @@ class CanvasSurfaceView(context: Context, private val engine: Long) : SurfaceVie
             view.postTranslate(-viewW / 2f, -viewH / 2f)
             view.postRotate(deg)
             view.postTranslate(w / 2f, h / 2f)
+            turn = ((turn + deg) % 360f + 540f) % 360f - 180f
             // The tilt is in screen space too; turn it with the paper.
             if (tiltX != 0f || tiltY != 0f) {
                 val a = Math.toRadians(deg.toDouble())
@@ -145,6 +148,7 @@ class CanvasSurfaceView(context: Context, private val engine: Long) : SurfaceVie
         if (width == 0 || canvasW == 0) return
         val s = min(width * 0.92f / canvasW, height * 0.84f / canvasH)
         fitScale = s
+        turn = 0f
         view.setScale(s, s)
         view.postTranslate((width - canvasW * s) / 2f, (height - canvasH * s) / 2f)
         pushView()
@@ -201,7 +205,7 @@ class CanvasSurfaceView(context: Context, private val engine: Long) : SurfaceVie
         view.mapPoints(c)
         val s = scale()
         val rot = Math.toDegrees(atan2(m[Matrix.MSKEW_Y], m[Matrix.MSCALE_X]).toDouble()).toFloat()
-        return CanvasFrame(c[0], c[1], canvasW * s, canvasH * s, rot)
+        return CanvasFrame(c[0], c[1], canvasW * s, canvasH * s, rot, turn)
     }
 
     override fun surfaceCreated(holder: SurfaceHolder) {}

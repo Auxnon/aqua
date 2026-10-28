@@ -130,22 +130,32 @@ export function createGallery(root, { onOpen, onCreate }) {
     const to = target.getBoundingClientRect();
     const url = URL.createObjectURL(art.thumb);
     const flyer = h('img', { class: 'flyer', src: url });
-    // Unwind the shorter way round.
-    const rot = ((((from.rotation % 360) + 540) % 360) - 180);
     Object.assign(flyer.style, { left: `${to.left}px`, top: `${to.top}px`, width: `${to.width}px`, height: `${to.height}px`, borderRadius: `${CARD_CORNER}px` });
     const sx = from.w / to.width;
     const sy = from.h / to.height;
     const dx = from.cx - (to.left + to.width / 2);
     const dy = from.cy - (to.top + to.height / 2);
+    // Unwind the shorter way round. The painter's own rotation unwinds on the
+    // way; a turn that came from the device stays as it was held until the
+    // painting lands, then settles upright into the card.
+    const wrap = (a) => ((((a % 360) + 540) % 360) - 180);
+    const own = wrap(from.rotation - (from.turn ?? 0));
+    const turn = wrap(from.turn ?? 0);
+    const frames = [];
+    for (let i = 0; i <= 16; i++) {
+      const t = i / 16;
+      const u = Math.min(1, Math.max(0, (t - 0.55) / 0.45));
+      const rot = own * (1 - t) + turn * (1 - u * u * (3 - 2 * u));
+      const k = 1 - t;
+      frames.push({
+        offset: t,
+        transform: `translate(${dx * k}px, ${dy * k}px) rotate(${rot}deg) scale(${sx + (1 - sx) * t}, ${sy + (1 - sy) * t})`,
+        borderRadius: `${CARD_CORNER * t}px`,
+      });
+    }
     document.body.append(flyer);
     await flyer.decode().catch(() => {});
-    const anim = flyer.animate(
-      [
-        { transform: `translate(${dx}px, ${dy}px) rotate(${rot}deg) scale(${sx}, ${sy})`, borderRadius: '0px' },
-        { transform: 'none', borderRadius: `${CARD_CORNER}px` },
-      ],
-      { duration: 520, easing: 'cubic-bezier(0.4, 0, 0.2, 1)' },
-    );
+    const anim = flyer.animate(frames, { duration: 520, easing: 'cubic-bezier(0.4, 0, 0.2, 1)' });
     anim.finished.finally(() => {
       target.style.visibility = '';
       flyer.remove();
