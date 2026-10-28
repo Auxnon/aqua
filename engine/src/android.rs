@@ -15,9 +15,9 @@ use jni::sys::{jboolean, jfloat, jfloatArray, jint, jlong, jstring};
 use ndk::native_window::NativeWindow;
 use raw_window_handle::{AndroidDisplayHandle, AndroidNdkWindowHandle, RawDisplayHandle, RawWindowHandle};
 
-use crate::brush::{BrushSettings, InputPoint, Tool};
+use crate::brush::{BrushSettings, InputPoint};
 use crate::engine::{Engine, View};
-use crate::gpu::{Gpu, read_pixel};
+use crate::gpu::Gpu;
 use crate::palette::Palette;
 use crate::pigment;
 use crate::storage;
@@ -249,15 +249,11 @@ fn handle_cmd(engine: &mut Engine, window: &mut Option<NativeWindow>, c: Cmd) ->
             let _ = reply.send(json);
         }
         Cmd::Sample(x, y, reply) => {
-            let v = engine.canvas.as_mut().and_then(|c| {
-                if x < 0.0 || y < 0.0 || x >= c.w as f32 || y >= c.h as f32 {
-                    return None;
-                }
-                c.update(0);
-                let px = read_pixel(&engine.gpu, &c.composite.tex, x as u32, y as u32);
-                let f: &[half::f16] = bytemuck::cast_slice(&px);
-                Some([0, 1, 2].map(|i| pigment::linear_to_srgb(f[i].to_f32())))
-            });
+            let v = engine
+                .canvas
+                .as_mut()
+                .and_then(|c| storage::begin_sample(c, x, y))
+                .and_then(|r| storage::texel_srgb(&pollster::block_on(r.read())));
             let _ = reply.send(v);
         }
         Cmd::Close(reply) => {
@@ -339,25 +335,9 @@ pub extern "system" fn Java_app_aqua_engine_Native_setTilt(_env: JNIEnv, _c: JCl
 
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_app_aqua_engine_Native_setBrush(mut env: JNIEnv, _c: JClass, h: jlong, tool: jint, params: JFloatArray) {
-    let p = floats(&mut env, &params);
-    if p.len() < 15 {
-        return;
+    if let Some(b) = BrushSettings::from_params(tool as u32, &floats(&mut env, &params)) {
+        send(h, Cmd::Brush(b));
     }
-    send(h, Cmd::Brush(BrushSettings {
-        tool: Tool::from_u32(tool as u32),
-        size: p[0],
-        pigment: [p[1], p[2], p[3], p[4]],
-        load: p[5],
-        water: p[6],
-        softness: p[7],
-        bristle: p[8],
-        bleed: p[9],
-        strength: p[10],
-        pressure_size: p[11],
-        pressure_flow: p[12],
-        smoothing: p[13],
-        splatter: p[14],
-    }));
 }
 
 /// phase: 0 begin, 1 move, 2 end, 3 cancel. pts: x, y, pressure triples in canvas pixels.

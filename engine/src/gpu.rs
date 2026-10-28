@@ -1,6 +1,9 @@
 //! Device setup and small texture/buffer helpers shared by the engine.
 
-use std::sync::Arc;
+use std::future::Future;
+use std::pin::Pin;
+use std::sync::{Arc, Mutex};
+use std::task::{Context, Poll, Waker};
 
 pub struct Gpu {
     pub instance: wgpu::Instance,
@@ -12,18 +15,28 @@ pub struct Gpu {
 impl Gpu {
     pub fn new_instance() -> wgpu::Instance {
         let mut desc = wgpu::InstanceDescriptor::new_without_display_handle();
-        desc.backends = wgpu::Backends::VULKAN | wgpu::Backends::GL;
+        desc.backends = if cfg!(target_arch = "wasm32") { wgpu::Backends::BROWSER_WEBGPU } else { wgpu::Backends::VULKAN | wgpu::Backends::GL };
         wgpu::Instance::new(desc)
     }
 
     /// Picks an adapter (preferring Vulkan) able to present to `surface`, if given.
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn new(instance: wgpu::Instance, surface: Option<&wgpu::Surface<'_>>) -> Result<Arc<Self>, String> {
-        let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+        pollster::block_on(Self::request(instance, surface))
+    }
+
+    /// Picks an adapter able to present to `surface`, if given, and opens the device.
+    // The browser is single-threaded and its WebGPU handles aren't Send; Arc is
+    // kept so native and web share one type.
+    #[cfg_attr(target_arch = "wasm32", allow(clippy::arc_with_non_send_sync))]
+    pub async fn request(instance: wgpu::Instance, surface: Option<&wgpu::Surface<'_>>) -> Result<Arc<Self>, String> {
+        let adapter = (instance.request_adapter(&wgpu::RequestAdapterOptions {
             power_preference: wgpu::PowerPreference::HighPerformance,
             force_fallback_adapter: false,
             compatible_surface: surface,
             apply_limit_buckets: false,
         }))
+        .await
         .map_err(|e| format!("no GPU adapter: {e}"))?;
         log::info!("aqua: using adapter {:?}", adapter.get_info());
 
@@ -37,7 +50,7 @@ impl Gpu {
         limits.max_storage_buffers_per_shader_stage = alimits.max_storage_buffers_per_shader_stage.min(4);
         limits.max_sampled_textures_per_shader_stage = alimits.max_sampled_textures_per_shader_stage.min(16);
 
-        let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
+        let (device, queue) = (adapter.request_device(&wgpu::DeviceDescriptor {
             label: Some("aqua"),
             required_features: wgpu::Features::empty(),
             required_limits: limits,
@@ -45,11 +58,13 @@ impl Gpu {
             memory_hints: wgpu::MemoryHints::Performance,
             trace: wgpu::Trace::Off,
         }))
+        .await
         .map_err(|e| format!("request_device failed: {e}"))?;
         device.on_uncaptured_error(Arc::new(|e| log::error!("aqua wgpu error: {e}")));
         Ok(Arc::new(Self { instance, adapter, device, queue }))
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn headless() -> Result<Arc<Self>, String> {
         Self::new(Self::new_instance(), None)
     }
@@ -175,61 +190,109 @@ pub fn copy_full(enc: &mut wgpu::CommandEncoder, src: &Tex, dst: &Tex) {
     copy_rect(enc, &src.tex, &dst.tex, (0, 0), (0, 0), src.width(), src.height());
 }
 
-/// Blocking read of a whole texture into tightly packed bytes.
-pub fn read_texture(gpu: &Gpu, tex: &wgpu::Texture) -> Vec<u8> {
-    let (w, h) = (tex.width(), tex.height());
-    let bpp = tex.format().block_copy_size(None).unwrap_or(4);
-    let row = w * bpp;
-    let padded = row.div_ceil(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT) * wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
-    let buf = gpu.device.create_buffer(&wgpu::BufferDescriptor {
-        label: Some("readback"),
-        size: padded as u64 * h as u64,
-        usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
-        mapped_at_creation: false,
-    });
-    let mut enc = gpu.device.create_command_encoder(&Default::default());
-    enc.copy_texture_to_buffer(
-        wgpu::TexelCopyTextureInfo { texture: tex, mip_level: 0, origin: wgpu::Origin3d::ZERO, aspect: wgpu::TextureAspect::All },
-        wgpu::TexelCopyBufferInfo { buffer: &buf, layout: wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(padded), rows_per_image: Some(h) } },
-        wgpu::Extent3d { width: w, height: h, depth_or_array_layers: 1 },
-    );
-    gpu.queue.submit([enc.finish()]);
-    let slice = buf.slice(..);
-    slice.map_async(wgpu::MapMode::Read, |_| {});
-    let _ = gpu.device.poll(wgpu::PollType::wait_indefinitely());
-    let data = slice.get_mapped_range().expect("readback map failed");
-    let mut out = Vec::with_capacity((row * h) as usize);
-    for y in 0..h as usize {
-        let start = y * padded as usize;
-        out.extend_from_slice(&data[start..start + row as usize]);
+/// A texture region copied into a mappable buffer, waiting to be read on the CPU.
+/// Reading is asynchronous so it also works in the browser, where nothing may
+/// block; on native, [`Readback::read`] just waits for the GPU.
+pub struct Readback {
+    /// Native reads poll the device; the browser maps buffers by itself.
+    #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
+    gpu: Arc<Gpu>,
+    buf: wgpu::Buffer,
+    row: u32,
+    padded: u32,
+    rows: u32,
+}
+
+impl Readback {
+    /// Queues a copy of `w`x`h` texels at `(x, y)`; submit happens here.
+    pub fn start(gpu: &Arc<Gpu>, tex: &wgpu::Texture, x: u32, y: u32, w: u32, h: u32) -> Self {
+        let bpp = tex.format().block_copy_size(None).unwrap_or(4);
+        let row = w * bpp;
+        let padded = row.div_ceil(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT) * wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
+        let buf = gpu.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("readback"),
+            size: padded as u64 * h as u64,
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+            mapped_at_creation: false,
+        });
+        let mut enc = gpu.device.create_command_encoder(&Default::default());
+        enc.copy_texture_to_buffer(
+            wgpu::TexelCopyTextureInfo { texture: tex, mip_level: 0, origin: wgpu::Origin3d { x, y, z: 0 }, aspect: wgpu::TextureAspect::All },
+            wgpu::TexelCopyBufferInfo { buffer: &buf, layout: wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(padded), rows_per_image: Some(h) } },
+            wgpu::Extent3d { width: w, height: h, depth_or_array_layers: 1 },
+        );
+        gpu.queue.submit([enc.finish()]);
+        Self { gpu: gpu.clone(), buf, row, padded, rows: h }
     }
-    drop(data);
-    buf.unmap();
-    out
+
+    /// The whole texture.
+    pub fn texture(gpu: &Arc<Gpu>, tex: &wgpu::Texture) -> Self {
+        Self::start(gpu, tex, 0, 0, tex.width(), tex.height())
+    }
+
+    /// Tightly packed bytes, or empty if mapping failed.
+    pub async fn read(self) -> Vec<u8> {
+        let slice = self.buf.slice(..);
+        let done = Arc::new(Mutex::new(Mapped::default()));
+        let d = done.clone();
+        slice.map_async(wgpu::MapMode::Read, move |res| {
+            let mut m = d.lock().unwrap();
+            m.result = Some(res.is_ok());
+            if let Some(w) = m.waker.take() {
+                w.wake();
+            }
+        });
+        #[cfg(not(target_arch = "wasm32"))]
+        let _ = self.gpu.device.poll(wgpu::PollType::wait_indefinitely());
+        let ok = MapFuture(done).await;
+        if !ok {
+            return Vec::new();
+        }
+        let Ok(data) = slice.get_mapped_range() else { return Vec::new() };
+        let mut out = Vec::with_capacity((self.row * self.rows) as usize);
+        for y in 0..self.rows as usize {
+            let start = y * self.padded as usize;
+            out.extend_from_slice(&data[start..start + self.row as usize]);
+        }
+        drop(data);
+        self.buf.unmap();
+        out
+    }
+}
+
+#[derive(Default)]
+struct Mapped {
+    result: Option<bool>,
+    waker: Option<Waker>,
+}
+
+struct MapFuture(Arc<Mutex<Mapped>>);
+
+impl Future for MapFuture {
+    type Output = bool;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<bool> {
+        let mut m = self.0.lock().unwrap();
+        match m.result {
+            Some(ok) => Poll::Ready(ok),
+            None => {
+                m.waker = Some(cx.waker().clone());
+                Poll::Pending
+            }
+        }
+    }
+}
+
+/// Blocking read of a whole texture into tightly packed bytes.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn read_texture(gpu: &Arc<Gpu>, tex: &wgpu::Texture) -> Vec<u8> {
+    pollster::block_on(Readback::texture(gpu, tex).read())
 }
 
 /// Blocking read of one texel.
-pub fn read_pixel(gpu: &Gpu, tex: &wgpu::Texture, x: u32, y: u32) -> Vec<u8> {
-    let bpp = tex.format().block_copy_size(None).unwrap_or(4);
-    let buf = gpu.device.create_buffer(&wgpu::BufferDescriptor {
-        label: Some("pixel"),
-        size: wgpu::COPY_BYTES_PER_ROW_ALIGNMENT as u64,
-        usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
-        mapped_at_creation: false,
-    });
-    let mut enc = gpu.device.create_command_encoder(&Default::default());
-    enc.copy_texture_to_buffer(
-        wgpu::TexelCopyTextureInfo { texture: tex, mip_level: 0, origin: wgpu::Origin3d { x, y, z: 0 }, aspect: wgpu::TextureAspect::All },
-        wgpu::TexelCopyBufferInfo { buffer: &buf, layout: wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: None, rows_per_image: None } },
-        wgpu::Extent3d { width: 1, height: 1, depth_or_array_layers: 1 },
-    );
-    gpu.queue.submit([enc.finish()]);
-    let slice = buf.slice(..);
-    slice.map_async(wgpu::MapMode::Read, |_| {});
-    let _ = gpu.device.poll(wgpu::PollType::wait_indefinitely());
-    let out = slice.get_mapped_range().map(|d| d[..bpp as usize].to_vec()).unwrap_or_default();
-    buf.unmap();
-    out
+#[cfg(not(target_arch = "wasm32"))]
+pub fn read_pixel(gpu: &Arc<Gpu>, tex: &wgpu::Texture, x: u32, y: u32) -> Vec<u8> {
+    pollster::block_on(Readback::start(gpu, tex, x, y, 1, 1).read())
 }
 
 /// Uploads tightly packed bytes into a whole texture.

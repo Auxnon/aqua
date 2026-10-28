@@ -1,12 +1,15 @@
 # Aqua
 
-A minimal watercolour and ink painting app for Android. The paint is simulated
-on the GPU: water flows across textured paper, pigment rides along and settles,
-edges dry dark, and clear water dropped into damp paint blooms.
+A minimal watercolour and ink painting app for Android and the web. The paint
+is simulated on the GPU: water flows across textured paper, pigment rides along
+and settles, edges dry dark, and clear water dropped into damp paint blooms.
 
-The UI is Kotlin and Jetpack Compose. The engine is Rust, using
-[wgpu](https://wgpu.rs) (Vulkan, with a GLES 3.1 fallback) for the simulation
-and rendering. Kotlin talks to it over JNI.
+The engine is Rust, using [wgpu](https://wgpu.rs) for the simulation and
+rendering: Vulkan (with a GLES 3.1 fallback) on Android, and WebGPU in the
+browser. Both apps run the same engine code. The Android UI is Kotlin and
+Jetpack Compose, talking to the engine over JNI. The web UI is plain HTML, CSS
+and JavaScript, talking to it through wasm-bindgen. Both follow one layout
+guideline, [docs/LAYOUT.md](docs/LAYOUT.md).
 
 ![test render](docs/test_render.png)
 
@@ -138,6 +141,24 @@ install in one step (`just` lists the other recipes: `run`, `release`, `test`,
 Gradle runs on JDK 21 (`gradle/gradle-daemon-jvm.properties`). It finds an
 installed JDK 21 or downloads one.
 
+### Web
+
+Requirements: Rust with the `wasm32-unknown-unknown` target, and
+[`wasm-pack`](https://rustwasm.github.io/wasm-pack/).
+
+```sh
+rustup target add wasm32-unknown-unknown
+cargo install wasm-pack
+just web          # builds web/www/pkg and serves web/www at http://localhost:8080
+```
+
+`just web-build` only builds. `web/www` is a static site with no bundler: host
+it anywhere. WebGPU needs a secure context: `localhost`, or https for other
+devices (for example, a phone on your network). It also needs a browser with
+WebGPU: a recent Chrome, Edge or Safari, or Firefox on Windows. Paintings and the
+palette are kept in the browser's IndexedDB, in the same file format the
+Android app uses. `window.aqua` exposes the engine in the devtools console.
+
 ### Engine without Android
 
 The engine runs headless on any desktop GPU:
@@ -165,6 +186,10 @@ engine/            Rust engine (wgpu)
   src/android.rs   JNI bridge and the engine thread
   src/shaders/     WGSL simulation, compositing, dabs, presentation
 app/               Android app (Kotlin, Compose)
-  ui/canvas/       canvas surface, gestures, tool dock, layers, palette, brush panels
+  ui/canvas/       canvas surface, gestures, tool dock, layers, palette, brush panels, gimbal
   ui/gallery/      painting gallery and the new-canvas dialog
+web/               Web app
+  src/lib.rs       wasm-bindgen bindings (the web's Native.kt)
+  www/js/          gallery, editor, canvas view and gestures, panels, gimbal, IndexedDB storage
+docs/LAYOUT.md     layout and behaviour every platform's UI follows
 ```

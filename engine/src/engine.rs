@@ -3,7 +3,9 @@
 //! `android.rs`); tests drive it headless.
 
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
+
+use web_time::Instant;
 
 use bytemuck::{Pod, Zeroable};
 
@@ -102,7 +104,12 @@ impl Engine {
             .find(|f| f.is_srgb())
             .or_else(|| caps.formats.first().copied())
             .unwrap_or(wgpu::TextureFormat::Rgba8Unorm);
-        let alpha = caps.alpha_modes.first().copied().unwrap_or(wgpu::CompositeAlphaMode::Auto);
+        // Opaque where offered: a browser would otherwise blend the canvas with the page.
+        let alpha = if caps.alpha_modes.contains(&wgpu::CompositeAlphaMode::Opaque) {
+            wgpu::CompositeAlphaMode::Opaque
+        } else {
+            caps.alpha_modes.first().copied().unwrap_or(wgpu::CompositeAlphaMode::Auto)
+        };
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format,

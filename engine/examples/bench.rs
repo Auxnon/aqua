@@ -57,11 +57,11 @@ fn main() {
     }
 }
 
-fn sync(gpu: &Gpu, e: &Engine) {
+fn sync(gpu: &std::sync::Arc<Gpu>, e: &Engine) {
     drop(read_pixel(gpu, &e.canvas.as_ref().unwrap().composite.tex, 0, 0));
 }
 
-fn run(gpu: &Gpu, e: &mut Engine, what: &str) {
+fn run(gpu: &std::sync::Arc<Gpu>, e: &mut Engine, what: &str) {
     sync(gpu, e);
     for steps in [1u32, 2] {
         let t = std::time::Instant::now();

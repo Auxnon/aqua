@@ -38,6 +38,14 @@ brush-test out="/tmp/aqua_brush":
 bench:
     cd engine && cargo run --release --example bench
 
+# Build the web app (engine to wasm with wasm-pack) into web/www
+web-build:
+    cd web && wasm-pack build --release --target web --out-dir www/pkg --no-typescript
+
+# Build and serve the web app at http://localhost:8080 (WebGPU needs localhost or https)
+web port="8080": web-build
+    cd web/www && python3 -m http.server {{port}} --bind 127.0.0.1
+
 # Show the app's log output
 logs:
     adb logcat -s aqua:V AndroidRuntime:E
@@ -47,3 +55,5 @@ clean:
     ./gradlew clean
     cd engine && cargo clean
     rm -rf app/src/main/jniLibs
+    cd web && cargo clean
+    rm -rf web/www/pkg

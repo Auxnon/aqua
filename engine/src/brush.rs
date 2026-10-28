@@ -67,6 +67,32 @@ impl Default for BrushSettings {
     }
 }
 
+impl BrushSettings {
+    /// From the flat parameter list the apps send: size, pigment (4), load,
+    /// water, softness, bristle, bleed, strength, pressure size, pressure flow,
+    /// smoothing, splatter.
+    pub fn from_params(tool: u32, p: &[f32]) -> Option<Self> {
+        if p.len() < 15 {
+            return None;
+        }
+        Some(Self {
+            tool: Tool::from_u32(tool),
+            size: p[0],
+            pigment: [p[1], p[2], p[3], p[4]],
+            load: p[5],
+            water: p[6],
+            softness: p[7],
+            bristle: p[8],
+            bleed: p[9],
+            strength: p[10],
+            pressure_size: p[11],
+            pressure_flow: p[12],
+            smoothing: p[13],
+            splatter: p[14],
+        })
+    }
+}
+
 /// GPU instance data for one dab (matches `DabIn` in dab.wgsl).
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, bytemuck::Pod, bytemuck::Zeroable)]

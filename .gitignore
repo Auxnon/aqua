@@ -8,3 +8,5 @@ captures/
 engine/target/
 app/src/main/jniLibs/
 paint_out/
+web/target/
+web/www/pkg/
