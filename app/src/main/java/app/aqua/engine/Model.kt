@@ -57,6 +57,8 @@ data class LayerInfo(
 data class CanvasInfo(
     val width: Int = 0,
     val height: Int = 0,
+    /** Which way up the painting is: the screen's quarter turns when it was created. */
+    val home: Int = 0,
     val active: Int = 0,
     val canUndo: Boolean = false,
     val canRedo: Boolean = false,
@@ -84,6 +86,7 @@ data class CanvasInfo(
             return CanvasInfo(
                 width = o.getInt("width"),
                 height = o.getInt("height"),
+                home = o.optInt("home", 0),
                 active = o.getInt("active"),
                 canUndo = o.getBoolean("canUndo"),
                 canRedo = o.getBoolean("canRedo"),

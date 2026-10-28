@@ -52,6 +52,8 @@ struct Meta {
     width: u32,
     height: u32,
     paper: PaperSpec,
+    #[serde(default)]
+    home: u32,
     active: usize,
     layers: Vec<LayerMeta>,
 }
@@ -79,7 +81,7 @@ pub fn begin_save(canvas: &mut Canvas) -> PendingSave {
         layers.push((l.id, reads));
         metas.push(LayerMeta { id: l.id, name: l.name.clone(), opacity: l.opacity, visible: l.visible, drying: l.drying, flow: l.flow, wet_rect });
     }
-    let meta = Meta { version: VERSION, width: canvas.w, height: canvas.h, paper: canvas.paper_spec, active: canvas.active, layers: metas };
+    let meta = Meta { version: VERSION, width: canvas.w, height: canvas.h, paper: canvas.paper_spec, home: canvas.home, active: canvas.active, layers: metas };
     PendingSave { meta, layers, thumb: begin_composite(canvas, THUMB_SIZE) }
 }
 
@@ -104,6 +106,7 @@ impl PendingSave {
 pub fn load_files(gpu: Arc<crate::gpu::Gpu>, pipes: Arc<Pipelines>, read: impl Fn(&str) -> Option<Vec<u8>>) -> Result<Canvas, String> {
     let meta: Meta = serde_json::from_slice(&read("meta.json").ok_or("no meta.json")?).map_err(|e| e.to_string())?;
     let mut canvas = Canvas::new(gpu.clone(), pipes, meta.width, meta.height, meta.paper);
+    canvas.home = meta.home % 4;
     let tex_bytes = meta.width as usize * meta.height as usize * 8;
     let mut layers: Vec<Layer> = Vec::new();
     let mut wet = Vec::new();

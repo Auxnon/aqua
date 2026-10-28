@@ -55,7 +55,7 @@ export class Engine {
   setTilt(x, y) { this.raw.set_tilt(x, y); this.kick(); }
   setBrush(tool, params) { this.raw.set_brush(tool, params); }
   stroke(phase, pts) { this.raw.stroke(phase, pts); this.kick(); }
-  newCanvas(w, h, paper, seed) { this.raw.new_canvas(w, h, paper, seed); this.kick(); }
+  newCanvas(w, h, paper, seed, home) { this.raw.new_canvas(w, h, paper, seed, home); this.kick(); }
   load(files) { this.raw.load(files); this.kick(); }
   save() { return this.raw.save(); }
   exportPng() { return this.raw.export_png(); }

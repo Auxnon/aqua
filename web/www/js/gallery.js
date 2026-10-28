@@ -5,7 +5,7 @@
 
 import { I } from './icons.js';
 import { deletePainting, duplicatePainting, listPaintings } from './store.js';
-import { h, icon } from './ui.js';
+import { h, icon, screenTurn } from './ui.js';
 
 /** Corner radius of a card; the flying painting rounds off to match. */
 const CARD_CORNER = 6;
@@ -16,6 +16,10 @@ export function createGallery(root, { onOpen, onCreate }) {
   const title = h('h1', {}, 'Aqua');
   const fab = h('button', { class: 'fab', title: 'New painting', 'aria-label': 'New painting', onclick: () => newDialog() }, icon(I.add, 24));
   root.append(title, grid, empty, fab);
+  // Cards keep each painting the way up it was created, so they turn back when the device turns.
+  const turnCards = () => { if (!root.classList.contains('off')) reload(); };
+  if (screen.orientation) screen.orientation.addEventListener('change', turnCards);
+  else window.addEventListener('orientationchange', turnCards);
   let urls = [];
   let busy = false;
 
@@ -41,8 +45,19 @@ export function createGallery(root, { onOpen, onCreate }) {
   function card(art) {
     const url = URL.createObjectURL(art.thumb);
     urls.push(url);
-    const img = h('img', { src: url, alt: '', draggable: 'false' });
-    const frame = h('div', { class: 'thumb', style: { aspectRatio: `${art.width} / ${Math.max(1, art.height)}` } }, img);
+    const q = screenTurn(art.home);
+    const [w, ht] = [Math.max(1, art.width), Math.max(1, art.height)];
+    // Turned a quarter, the image is laid out the painting's way round and
+    // rotated into the card, whose sides are swapped.
+    const img = h('img', {
+      src: url,
+      alt: '',
+      draggable: 'false',
+      style: q % 2
+        ? { position: 'absolute', left: '50%', top: '50%', width: `${(100 * w) / ht}%`, height: `${(100 * ht) / w}%`, transform: `translate(-50%, -50%) rotate(${90 * q}deg)` }
+        : { transform: q ? 'rotate(180deg)' : '' },
+    });
+    const frame = h('div', { class: 'thumb', style: { aspectRatio: q % 2 ? `${ht} / ${w}` : `${w} / ${ht}`, position: 'relative' } }, img);
     const date = h('div', { class: 'date' }, new Date(art.modified).toLocaleDateString(undefined, { dateStyle: 'medium' }));
     const el = h('div', { class: 'card', 'data-id': art.id }, frame, date);
     frame.addEventListener('click', () => open(art.id));
@@ -130,26 +145,27 @@ export function createGallery(root, { onOpen, onCreate }) {
     const to = target.getBoundingClientRect();
     const url = URL.createObjectURL(art.thumb);
     const flyer = h('img', { class: 'flyer', src: url });
-    Object.assign(flyer.style, { left: `${to.left}px`, top: `${to.top}px`, width: `${to.width}px`, height: `${to.height}px`, borderRadius: `${CARD_CORNER}px` });
-    const sx = from.w / to.width;
-    const sy = from.h / to.height;
-    const dx = from.cx - (to.left + to.width / 2);
-    const dy = from.cy - (to.top + to.height / 2);
-    // Unwind the shorter way round. The painter's own rotation unwinds on the
-    // way; a turn that came from the device stays as it was held until the
-    // painting lands, then settles upright into the card.
+    // The card holds the painting turned to the way up it was created; the
+    // flight unwinds the view's rotation to that, the shorter way round.
+    const q = screenTurn(art.home);
+    const end = 90 * q;
     const wrap = (a) => ((((a % 360) + 540) % 360) - 180);
-    const own = wrap(from.rotation - (from.turn ?? 0));
-    const turn = wrap(from.turn ?? 0);
+    const own = wrap(from.rotation - end);
+    const [cw, ch] = q % 2 ? [to.height, to.width] : [to.width, to.height];
+    const ccx = to.left + to.width / 2;
+    const ccy = to.top + to.height / 2;
+    Object.assign(flyer.style, { left: `${ccx - cw / 2}px`, top: `${ccy - ch / 2}px`, width: `${cw}px`, height: `${ch}px`, borderRadius: `${CARD_CORNER}px` });
+    const sx = from.w / cw;
+    const sy = from.h / ch;
+    const dx = from.cx - ccx;
+    const dy = from.cy - ccy;
     const frames = [];
     for (let i = 0; i <= 16; i++) {
       const t = i / 16;
-      const u = Math.min(1, Math.max(0, (t - 0.55) / 0.45));
-      const rot = own * (1 - t) + turn * (1 - u * u * (3 - 2 * u));
       const k = 1 - t;
       frames.push({
         offset: t,
-        transform: `translate(${dx * k}px, ${dy * k}px) rotate(${rot}deg) scale(${sx + (1 - sx) * t}, ${sy + (1 - sy) * t})`,
+        transform: `translate(${dx * k}px, ${dy * k}px) rotate(${end + own * k}deg) scale(${sx + (1 - sx) * t}, ${sy + (1 - sy) * t})`,
         borderRadius: `${CARD_CORNER * t}px`,
       });
     }

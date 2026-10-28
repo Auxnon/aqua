@@ -117,4 +117,18 @@ export function railSlider(label, height = 160) {
   };
 }
 
+/** How far the screen is turned from the device's natural orientation, in degrees. */
+export function screenAngle() {
+  return ((((screen.orientation?.angle ?? window.orientation ?? 0) % 360) + 360) % 360);
+}
+
+/** The screen's rotation in quarter turns (0..3). */
+export const screenQuarter = () => Math.round(screenAngle() / 90) % 4;
+
+/**
+ * Quarter turns (0..3) a painting is drawn at on screen: it stays the way up it
+ * was when created (`home`) whichever way the screen is turned.
+ */
+export const screenTurn = (home, quarter = screenQuarter()) => ((((home ?? 0) - quarter) % 4) + 4) % 4;
+
 export const clamp = (v, a, b) => Math.min(b, Math.max(a, v));

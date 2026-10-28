@@ -1,8 +1,15 @@
 package app.aqua.ui
 
+import android.hardware.display.DisplayManager
+import android.view.Surface
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Rect
@@ -10,16 +17,13 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import kotlin.math.roundToInt
 
-/**
- * Where the painting sits on screen, in window pixels: centre, size and rotation
- * in degrees. [turn] is the part of the rotation that came from the device
- * turning under the paper rather than from the painter.
- */
-data class CanvasFrame(val cx: Float, val cy: Float, val w: Float, val h: Float, val rotation: Float, val turn: Float = 0f)
+/** Where the painting sits on screen, in window pixels: centre, size and rotation in degrees. */
+data class CanvasFrame(val cx: Float, val cy: Float, val w: Float, val h: Float, val rotation: Float)
 
 /** A painting coming back to the gallery from the editor: where it was on screen, and its fresh thumbnail. */
 data class Arrival(val dir: String, val from: CanvasFrame, val thumb: ImageBitmap)
@@ -28,22 +32,55 @@ data class Arrival(val dir: String, val from: CanvasFrame, val thumb: ImageBitma
 const val CARD_CORNER_DP = 6f
 
 /**
+ * Quarter turns (0..3) a painting is drawn at on screen: it stays the way up it
+ * was when created ([home]) whichever way the screen is turned ([rotation]).
+ */
+fun screenTurn(home: Int, rotation: Int) = ((home - rotation) % 4 + 4) % 4
+
+/** The screen's current rotation (a `Surface.ROTATION_*`), kept up to date, half turns included. */
+@Composable
+fun rememberDisplayRotation(): Int {
+    val view = LocalView.current
+    var rotation by remember { mutableIntStateOf(view.display?.rotation ?: Surface.ROTATION_0) }
+    DisposableEffect(view) {
+        val dm = view.context.getSystemService(DisplayManager::class.java)
+        val listener = object : DisplayManager.DisplayListener {
+            override fun onDisplayChanged(id: Int) {
+                view.display?.rotation?.let { rotation = it }
+            }
+
+            override fun onDisplayAdded(id: Int) {}
+            override fun onDisplayRemoved(id: Int) {}
+        }
+        dm.registerDisplayListener(listener, view.handler)
+        onDispose { dm.unregisterDisplayListener(listener) }
+    }
+    return rotation
+}
+
+/** Lays the content out turned by [quarters] quarter turns, filling the box it is in. */
+fun Modifier.turned(quarters: Int): Modifier = layout { m, c ->
+    val odd = quarters % 2 == 1
+    val p = m.measure(if (odd) Constraints.fixed(c.maxHeight, c.maxWidth) else Constraints.fixed(c.maxWidth, c.maxHeight))
+    layout(c.maxWidth, c.maxHeight) {
+        p.placeWithLayer((c.maxWidth - p.width) / 2, (c.maxHeight - p.height) / 2) { rotationZ = 90f * quarters }
+    }
+}
+
+/**
  * The painting's thumbnail on its way from the editor into its gallery card,
- * at progress [t] (0 = where the canvas was, 1 = the card at [to]).
+ * at progress [t] (0 = where the canvas was, 1 = the card at [to], whose
+ * painting is turned by [toTurn] quarter turns).
  */
 @Composable
-fun FlyingPainting(image: ImageBitmap, from: CanvasFrame, to: Rect, t: Float) {
+fun FlyingPainting(image: ImageBitmap, from: CanvasFrame, to: Rect, toTurn: Int, t: Float) {
     fun lerp(a: Float, b: Float) = a + (b - a) * t
-    // Unwind the shorter way round. The painter's own rotation unwinds on the
-    // way; a turn that came from the device stays as it was held until the
-    // painting lands, then settles upright into the card.
-    fun wrap(a: Float) = ((a % 360f) + 540f) % 360f - 180f
-    val own = wrap(from.rotation - from.turn)
-    val turn = wrap(from.turn)
-    val settle = ((t - 0.55f) / 0.45f).coerceIn(0f, 1f).let { it * it * (3f - 2f * it) }
-    val rot = own * (1f - t) + turn * (1f - settle)
-    val w = lerp(from.w, to.width)
-    val h = lerp(from.h, to.height)
+    // Unwind to the card's own turn, the shorter way round.
+    val end = 90f * toTurn
+    val rot = end + (((from.rotation - end) % 360f + 540f) % 360f - 180f) * (1f - t)
+    val odd = toTurn % 2 == 1
+    val w = lerp(from.w, if (odd) to.height else to.width)
+    val h = lerp(from.h, if (odd) to.width else to.height)
     val cx = lerp(from.cx, to.center.x)
     val cy = lerp(from.cy, to.center.y)
     Image(

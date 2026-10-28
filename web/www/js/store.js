@@ -35,7 +35,7 @@ function request(req) {
   });
 }
 
-/** Summaries of every painting, newest first: { id, width, height, modified, thumb: Blob }. */
+/** Summaries of every painting, newest first: { id, width, height, home, modified, thumb: Blob }. */
 export async function listPaintings() {
   const d = await db();
   const all = await request(d.transaction('summaries').objectStore('summaries').getAll());
@@ -55,6 +55,7 @@ export async function writePainting(id, files) {
     id,
     width: meta.width,
     height: meta.height,
+    home: (meta.home ?? 0) % 4,
     modified: Date.now(),
     thumb: new Blob([files['thumb.png']], { type: 'image/png' }),
   };

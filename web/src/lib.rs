@@ -74,8 +74,8 @@ impl AquaEngine {
         self.engine.borrow_mut().stroke(phase, &p);
     }
 
-    pub fn new_canvas(&self, w: u32, h: u32, paper: u32, seed: u32) {
-        self.engine.borrow_mut().new_canvas(w, h, paper, seed);
+    pub fn new_canvas(&self, w: u32, h: u32, paper: u32, seed: u32, home: u32) {
+        self.engine.borrow_mut().new_canvas(w, h, paper, seed, home);
     }
 
     /// Opens a painting from its files: an object mapping file names to `Uint8Array`s.
@@ -178,6 +178,7 @@ impl AquaEngine {
             Some(c) => serde_json::json!({
                 "width": c.w,
                 "height": c.h,
+                "home": c.home,
                 "active": c.active,
                 "canUndo": c.can_undo(),
                 "canRedo": c.can_redo(),

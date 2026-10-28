@@ -462,6 +462,10 @@ pub struct Canvas {
     pub w: u32,
     pub h: u32,
     pub paper_spec: PaperSpec,
+    /// Which way up the painting is: the screen's quarter turns from the device's
+    /// natural orientation when it was created. The paper is kept that way in
+    /// the hand whichever way the device is held later.
+    pub home: u32,
     pub paper: Tex,
     pub layers: Vec<Layer>,
     pub active: usize,
@@ -538,6 +542,7 @@ impl Canvas {
             w,
             h,
             paper_spec,
+            home: 0,
             gpu,
             pipes,
         };

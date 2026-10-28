@@ -8,7 +8,7 @@ use aqua_engine::gpu::{Gpu, read_pixel};
 fn main() {
     let gpu = Gpu::headless().expect("gpu");
     let mut e = Engine::new(gpu.clone());
-    e.new_canvas(2048, 2048, 0, 3);
+    e.new_canvas(2048, 2048, 0, 3, 0);
     e.brush = BrushSettings { size: 120.0, water: 1.0, ..Default::default() };
     // Zig-zag wash over the whole sheet.
     for row in 0..9 {
@@ -22,7 +22,7 @@ fn main() {
     run(&gpu, &mut e, "fully wet");
 
     // A typical gesture: one long diagonal stroke and a cross stroke.
-    e.new_canvas(2048, 2048, 0, 3);
+    e.new_canvas(2048, 2048, 0, 3, 0);
     e.brush = BrushSettings { size: 40.0, water: 0.9, ..Default::default() };
     for (a, b) in [((80.0, 80.0), (1960.0, 1960.0)), ((1960.0, 80.0), (80.0, 1960.0))] {
         let pts: Vec<InputPoint> = (0..=80)

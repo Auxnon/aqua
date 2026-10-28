@@ -39,7 +39,7 @@ fn main() {
     std::fs::create_dir_all(&out).unwrap();
     let gpu = Gpu::headless().expect("gpu");
     let mut e = Engine::new(gpu);
-    e.new_canvas(1024, 768, 0, 7);
+    e.new_canvas(1024, 768, 0, 7, 0);
     let t0 = std::time::Instant::now();
 
     // 1. A juicy ultramarine wash.

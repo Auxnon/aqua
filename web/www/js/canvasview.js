@@ -5,6 +5,8 @@
 // letting go goes back to the gallery. With a mouse, the wheel zooms and the
 // middle or right button (or space + drag) pans.
 
+import { screenAngle, screenTurn } from './ui.js';
+
 /** Pinching out below this fraction of the fitted size and letting go opens the gallery. */
 const OVERVIEW_ZOOM = 0.45;
 
@@ -56,13 +58,6 @@ class Mat {
   }
 }
 
-const wrapDeg = (a) => ((((a % 360) + 540) % 360) - 180);
-
-/** How far the screen is turned from the device's natural orientation, in degrees. */
-function screenAngle() {
-  return screen.orientation?.angle ?? window.orientation ?? 0;
-}
-
 export class CanvasView {
   constructor(canvas, engine, cb) {
     this.canvas = canvas;
@@ -78,8 +73,7 @@ export class CanvasView {
     this.eyedropper = false;
     this.enabled = false;
     this.tilt = [0, 0];
-    // How far the view has been turned back against the device turning, in degrees.
-    this.turn = 0;
+    this.home = 0;
     this.pointers = new Map();
     this.mode = 'none';
     this.drawPointer = -1;
@@ -125,10 +119,7 @@ export class CanvasView {
       // turns the window turns under the paper, so the view turns the other way
       // and the paper stays still in the hand; only the controls move.
       this.view.postTranslate(-ow / 2, -oh / 2);
-      if (steps) {
-        this.view.postRotate(-90 * steps);
-        this.turn = wrapDeg(this.turn - 90 * steps);
-      }
+      if (steps) this.view.postRotate(-90 * steps);
       this.view.postTranslate(w / 2, h / 2);
       if (steps && (this.tilt[0] || this.tilt[1])) {
         // The tilt is in screen space too; turn it with the paper.
@@ -141,22 +132,29 @@ export class CanvasView {
     } else this.fitIfReady();
   }
 
-  setCanvasSize(w, h) {
-    if (w !== this.canvasW || h !== this.canvasH) {
+  /** The painting's size, and which way up it is (`home`, see screenTurn). */
+  setCanvasSize(w, h, home = 0) {
+    if (w !== this.canvasW || h !== this.canvasH || home !== this.home) {
       this.canvasW = w;
       this.canvasH = h;
+      this.home = home;
       this.fitted = false;
     }
     this.fitIfReady();
   }
 
+  /** Fits the painting to the screen, the way up it was created. */
   fit() {
     const { width, height } = this.canvas;
     if (!width || !this.canvasW) return;
-    const s = Math.min((width * 0.92) / this.canvasW, (height * 0.84) / this.canvasH);
+    const q = screenTurn(this.home);
+    const [w, h] = q % 2 ? [this.canvasH, this.canvasW] : [this.canvasW, this.canvasH];
+    const s = Math.min((width * 0.92) / w, (height * 0.84) / h);
     this.fitScale = s;
-    this.turn = 0;
-    this.view = new Mat([s, 0, (width - this.canvasW * s) / 2, 0, s, (height - this.canvasH * s) / 2]);
+    this.angle = screenAngle();
+    this.view = new Mat([s, 0, -this.canvasW * s / 2, 0, s, -this.canvasH * s / 2]);
+    this.view.postRotate(90 * q);
+    this.view.postTranslate(width / 2, height / 2);
     this.pushView();
   }
 
@@ -203,7 +201,7 @@ export class CanvasView {
     const [cx, cy] = this.view.map(this.canvasW / 2, this.canvasH / 2);
     const s = this.view.scale() / this.dpr;
     const r = this.canvas.getBoundingClientRect();
-    return { cx: r.left + cx / this.dpr, cy: r.top + cy / this.dpr, w: this.canvasW * s, h: this.canvasH * s, rotation: (this.view.angle() * 180) / Math.PI, turn: this.turn };
+    return { cx: r.left + cx / this.dpr, cy: r.top + cy / this.dpr, w: this.canvasW * s, h: this.canvasH * s, rotation: (this.view.angle() * 180) / Math.PI };
   }
 
   // ------------------------------------------------------------------ input

@@ -237,7 +237,7 @@ fun CanvasScreen(dir: File, onExit: (Arrival?) -> Unit) {
                 v.eyedropper = tool == Tool.Eyedropper
                 v.onSample = { rgb -> setColor(Pigment.fromRgb(rgb[0], rgb[1], rgb[2])) }
                 v.onTouchStart = { panel = Panel.None }
-                v.setCanvasSize(info.width, info.height)
+                v.setCanvasSize(info.width, info.height, info.home)
             },
         )
 

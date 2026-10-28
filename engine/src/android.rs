@@ -29,7 +29,7 @@ enum Cmd {
     Tilt(f32, f32),
     Brush(BrushSettings),
     Stroke(i32, Vec<InputPoint>),
-    NewCanvas(u32, u32, u32, u32, SyncSender<()>),
+    NewCanvas(u32, u32, u32, u32, u32, SyncSender<()>),
     Load(PathBuf, SyncSender<bool>),
     Save(PathBuf, SyncSender<bool>),
     Export(PathBuf, SyncSender<bool>),
@@ -155,8 +155,8 @@ fn handle_cmd(engine: &mut Engine, window: &mut Option<NativeWindow>, c: Cmd) ->
         }
         Cmd::Brush(b) => engine.brush = b,
         Cmd::Stroke(phase, pts) => engine.stroke(phase, &pts),
-        Cmd::NewCanvas(w, h, kind, seed, reply) => {
-            engine.new_canvas(w, h, kind, seed);
+        Cmd::NewCanvas(w, h, kind, seed, home, reply) => {
+            engine.new_canvas(w, h, kind, seed, home);
             let _ = reply.send(());
         }
         Cmd::Load(dir, reply) => {
@@ -237,6 +237,7 @@ fn handle_cmd(engine: &mut Engine, window: &mut Option<NativeWindow>, c: Cmd) ->
                 Some(c) => serde_json::json!({
                     "width": c.w,
                     "height": c.h,
+                    "home": c.home,
                     "active": c.active,
                     "canUndo": c.can_undo(),
                     "canRedo": c.can_redo(),
@@ -351,8 +352,8 @@ pub extern "system" fn Java_app_aqua_engine_Native_stroke(mut env: JNIEnv, _c: J
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_app_aqua_engine_Native_newCanvas(_env: JNIEnv, _c: JClass, h: jlong, w: jint, ht: jint, paper: jint, seed: jint) {
-    ask(h, |r| Cmd::NewCanvas(w as u32, ht as u32, paper as u32, seed as u32, r));
+pub extern "system" fn Java_app_aqua_engine_Native_newCanvas(_env: JNIEnv, _c: JClass, h: jlong, w: jint, ht: jint, paper: jint, seed: jint, home: jint) {
+    ask(h, |r| Cmd::NewCanvas(w as u32, ht as u32, paper as u32, seed as u32, home as u32, r));
 }
 
 #[unsafe(no_mangle)]

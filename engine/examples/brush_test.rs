@@ -75,7 +75,7 @@ fn undo_to_blank(e: &mut Engine, name: &str) {
     }
     let (_, _, undone) = storage::composite_srgb(c, 800);
     let mut blank = Engine::new(c.gpu().clone());
-    blank.new_canvas(w, h, 0, 7);
+    blank.new_canvas(w, h, 0, 7, 0);
     let (_, _, fresh) = storage::composite_srgb(blank.canvas.as_mut().unwrap(), 800);
     let differ = undone.iter().zip(&fresh).filter(|(a, b)| a.abs_diff(**b) > 2).count();
     println!("{name}: after undoing everything, {differ} bytes differ from blank paper");
@@ -89,7 +89,7 @@ fn main() {
     // A validation error drops the whole frame silently; fail loudly instead.
     gpu.device.on_uncaptured_error(std::sync::Arc::new(|err: wgpu::Error| panic!("wgpu: {err}")));
     let mut e = Engine::new(gpu);
-    e.new_canvas(1000, 700, 0, 7);
+    e.new_canvas(1000, 700, 0, 7, 0);
 
     // Watercolour: a quick tap, then holds at rising pressure.
     let blue = from_srgb([0.15, 0.3, 0.7]);
@@ -131,7 +131,7 @@ fn main() {
 
     // Flooding: a watercolour wash scrubbed over and over with clear water, calm vs wild.
     for (name, flow) in [("flood_calm", 0.0), ("flood_wild", 1.0)] {
-        e.new_canvas(800, 800, 0, 7);
+        e.new_canvas(800, 800, 0, 7, 0);
         e.canvas.as_mut().unwrap().set_layer_flow(0, flow);
         e.brush = BrushSettings { tool: Tool::Watercolor, size: 40.0, pigment: from_srgb([0.75, 0.2, 0.3]), water: 1.0, load: 0.8, ..Default::default() };
         let scrub = |cx: f32, cy: f32, r: f32| -> Vec<InputPoint> {
@@ -161,7 +161,7 @@ fn main() {
 
     // Eraser across a wash: while water is standing it lifts and smears, once the
     // surface has soaked in (still damp) and when dry it erases.
-    e.new_canvas(600, 400, 0, 7);
+    e.new_canvas(600, 400, 0, 7, 0);
     e.brush = BrushSettings { tool: Tool::Watercolor, size: 40.0, pigment: from_srgb([0.2, 0.3, 0.7]), water: 1.0, ..Default::default() };
     for row in 0..3 {
         let y = 120.0 + row as f32 * 60.0;
@@ -184,7 +184,7 @@ fn main() {
     // Tipped paper: a wet wash, a puddle of clear water dropped into a wash, and
     // India ink in water, painted with the paper tipped towards the bottom edge.
     // Beads gather along the lower edges and run as drips.
-    e.new_canvas(700, 600, 0, 7);
+    e.new_canvas(700, 600, 0, 7, 0);
     e.canvas.as_mut().unwrap().set_tilt(0.0, 1.0);
     let row = |x: f32, y: f32| (0..40).map(|i| InputPoint { x: x + i as f32 * 6.0, y, pressure: 0.9 }).collect::<Vec<_>>();
     e.brush = BrushSettings { tool: Tool::Watercolor, size: 30.0, pigment: from_srgb([0.2, 0.35, 0.7]), water: 1.0, ..Default::default() };

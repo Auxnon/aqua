@@ -82,10 +82,14 @@ B / W / I / E / K pick a tool; 0 fits the painting to the screen.
 - **Palette.** The mixing tray has three modes: Paint, Mix and Pick. Mixed
   colours that are picked up are remembered, up to 16. The tray is kept between
   sessions.
-- **Turning the device.** The paper stays where it is in the hand; only the
-  controls move to the new edges. The view turns the opposite way to the
-  screen (about the middle of the screen), and the screen-space tilt turns
-  with it so the paper stays tipped the same way.
+- **Which way up a painting is.** A painting is fixed the way up it was
+  when it was created (`home` in `meta.json`: the screen's quarter turns at
+  the time). Turning the device never turns the painting in the hand: the
+  editor view turns against the screen, "fit" fits it at that angle, and
+  gallery cards show it turned the same way, so the flight back to the
+  gallery doesn't spin. Only the controls move to the new edges. The
+  screen-space tilt turns with the view so the paper stays tipped the same
+  way.
 - **Tipping the paper.** The tilt is set in screen space and converted to
   canvas space with the view's rotation. Phone tilt is measured from the pose
   when it started. "Keep phone tilt on when closed" only appears where a tilt

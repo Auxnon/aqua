@@ -5,7 +5,7 @@ import { loadWasm, startEngine } from './engine.js';
 import { createGallery } from './gallery.js';
 import { tray } from './panels.js';
 import { newId, readPainting, writePainting } from './store.js';
-import { h } from './ui.js';
+import { h, screenQuarter } from './ui.js';
 
 const galleryRoot = document.getElementById('gallery');
 const editorRoot = document.getElementById('editor');
@@ -43,7 +43,8 @@ async function main() {
     },
     async onCreate(w, h, paper) {
       const id = newId();
-      engine.newCanvas(w, h, paper, 1 + Math.floor(Math.random() * 0x7ffffffe));
+      // The painting is kept the way up it is now, whichever way the device turns later.
+      engine.newCanvas(w, h, paper, 1 + Math.floor(Math.random() * 0x7ffffffe), screenQuarter());
       await writePainting(id, await engine.save());
       show('editor');
       editor.open(id);

@@ -25,7 +25,7 @@ object Native {
     /** phase: 0 begin, 1 move, 2 end, 3 cancel; points are (x, y, pressure) in canvas pixels. */
     @JvmStatic external fun stroke(handle: Long, phase: Int, points: FloatArray)
 
-    @JvmStatic external fun newCanvas(handle: Long, width: Int, height: Int, paper: Int, seed: Int)
+    @JvmStatic external fun newCanvas(handle: Long, width: Int, height: Int, paper: Int, seed: Int, home: Int)
     @JvmStatic external fun load(handle: Long, dir: String): Boolean
     @JvmStatic external fun save(handle: Long, dir: String): Boolean
     @JvmStatic external fun exportPng(handle: Long, path: String): Boolean

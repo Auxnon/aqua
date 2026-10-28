@@ -88,10 +88,13 @@ impl Engine {
         }
     }
 
-    pub fn new_canvas(&mut self, w: u32, h: u32, paper_kind: u32, seed: u32) {
+    /// A blank painting. `home` is which way up it is (see [`Canvas::home`]).
+    pub fn new_canvas(&mut self, w: u32, h: u32, paper_kind: u32, seed: u32, home: u32) {
         let max = self.gpu.device.limits().max_texture_dimension_2d;
         let (w, h) = (w.clamp(64, max), h.clamp(64, max));
-        self.canvas = Some(Canvas::new(self.gpu.clone(), self.pipes.clone(), w, h, PaperSpec::preset(paper_kind, seed)));
+        let mut canvas = Canvas::new(self.gpu.clone(), self.pipes.clone(), w, h, PaperSpec::preset(paper_kind, seed));
+        canvas.home = home % 4;
+        self.canvas = Some(canvas);
         self.needs_present = true;
     }
 

@@ -62,6 +62,9 @@ import app.aqua.AquaApp
 import app.aqua.data.Artwork
 import app.aqua.engine.Native
 import app.aqua.ui.Arrival
+import app.aqua.ui.rememberDisplayRotation
+import app.aqua.ui.screenTurn
+import app.aqua.ui.turned
 import app.aqua.ui.CARD_CORNER_DP
 import app.aqua.ui.FlyingPainting
 import app.aqua.ui.theme.AquaColors
@@ -112,6 +115,7 @@ fun GalleryScreen(onOpen: (File) -> Unit, arrival: Arrival? = null, onArrived: (
         }
     }
     val galleryAlpha = if (landed) 1f else flight.value
+    val rotation = rememberDisplayRotation()
 
     fun open(dir: File) {
         if (busy) return
@@ -149,11 +153,9 @@ fun GalleryScreen(onOpen: (File) -> Unit, arrival: Arrival? = null, onArrived: (
                         val arriving = !landed && art.dir.path == arrival?.dir
                         ArtCard(
                             art,
-                            modifier = if (arriving) {
-                                Modifier.graphicsLayer { alpha = 0f }.onGloballyPositioned { landing = it.boundsInRoot() }
-                            } else {
-                                Modifier.graphicsLayer { alpha = galleryAlpha }
-                            },
+                            turn = screenTurn(art.home, rotation),
+                            onThumbBounds = if (arriving) ({ landing = it }) else null,
+                            modifier = Modifier.graphicsLayer { alpha = if (arriving) 0f else galleryAlpha },
                             onClick = { open(art.dir) },
                             onDelete = { app.repo.delete(art); reload() },
                             onDuplicate = { scope.launch(Dispatchers.IO) { app.repo.duplicate(art); reload() } },
@@ -171,7 +173,8 @@ fun GalleryScreen(onOpen: (File) -> Unit, arrival: Arrival? = null, onArrived: (
         val to = landing
         if (!landed && arrival != null) {
             // Until the card is laid out, hold the painting where the canvas was.
-            FlyingPainting(arrival.thumb, arrival.from, to ?: Rect.Zero, if (to == null) 0f else flight.value)
+            val home = items.firstOrNull { it.dir.path == arrival.dir }?.home ?: 0
+            FlyingPainting(arrival.thumb, arrival.from, to ?: Rect.Zero, screenTurn(home, rotation), if (to == null) 0f else flight.value)
         }
     }
 
@@ -183,7 +186,8 @@ fun GalleryScreen(onOpen: (File) -> Unit, arrival: Arrival? = null, onArrived: (
                 busy = true
                 scope.launch(Dispatchers.IO) {
                     val dir = app.repo.newDir()
-                    Native.newCanvas(app.engine, w, h, paper, Random.nextInt(1, Int.MAX_VALUE))
+                    // The painting is kept the way up it is now, whichever way the phone turns later.
+                    Native.newCanvas(app.engine, w, h, paper, Random.nextInt(1, Int.MAX_VALUE), rotation)
                     Native.save(app.engine, dir.path)
                     withContext(Dispatchers.Main) {
                         busy = false
@@ -196,7 +200,15 @@ fun GalleryScreen(onOpen: (File) -> Unit, arrival: Arrival? = null, onArrived: (
 }
 
 @Composable
-private fun ArtCard(art: Artwork, onClick: () -> Unit, onDelete: () -> Unit, onDuplicate: () -> Unit, modifier: Modifier = Modifier) {
+private fun ArtCard(
+    art: Artwork,
+    turn: Int,
+    onClick: () -> Unit,
+    onDelete: () -> Unit,
+    onDuplicate: () -> Unit,
+    modifier: Modifier = Modifier,
+    onThumbBounds: ((Rect) -> Unit)? = null,
+) {
     var menu by remember { mutableStateOf(false) }
     var confirm by remember { mutableStateOf(false) }
     val thumb by produceState<ImageBitmap?>(null, art.thumb, art.modified) {
@@ -206,13 +218,14 @@ private fun ArtCard(art: Artwork, onClick: () -> Unit, onDelete: () -> Unit, onD
         Box(
             Modifier
                 .fillMaxWidth()
-                .aspectRatio(art.width / max(1f, art.height.toFloat()))
+                .aspectRatio(if (turn % 2 == 1) art.height / max(1f, art.width.toFloat()) else art.width / max(1f, art.height.toFloat()))
+                .then(if (onThumbBounds != null) Modifier.onGloballyPositioned { onThumbBounds(it.boundsInRoot()) } else Modifier)
                 .clip(RoundedCornerShape(CARD_CORNER_DP.dp))
                 .border(1.dp, AquaColors.Line, RoundedCornerShape(CARD_CORNER_DP.dp))
                 .background(AquaColors.Raised)
                 .combinedClickable(onClick = onClick, onLongClick = { menu = true }),
         ) {
-            thumb?.let { Image(it, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()) }
+            thumb?.let { Image(it, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize().turned(turn)) }
             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                 DropdownMenuItem(text = { Text("Duplicate") }, onClick = { menu = false; onDuplicate() })
                 DropdownMenuItem(text = { Text("Delete", color = AquaColors.Danger) }, onClick = { menu = false; confirm = true })

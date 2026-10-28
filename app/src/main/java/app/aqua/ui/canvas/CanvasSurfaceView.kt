@@ -10,6 +10,7 @@ import android.view.SurfaceView
 import android.view.ViewConfiguration
 import app.aqua.engine.Native
 import app.aqua.ui.CanvasFrame
+import app.aqua.ui.screenTurn
 import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.cos
@@ -43,6 +44,7 @@ class CanvasSurfaceView(context: Context, private val engine: Long) : SurfaceVie
 
     private var canvasW = 0
     private var canvasH = 0
+    private var home = 0
     private var attached = false
     private var fitted = false
     private var fitScale = 1f
@@ -52,8 +54,6 @@ class CanvasSurfaceView(context: Context, private val engine: Long) : SurfaceVie
     private var rotation = -1
     private var viewW = 0
     private var viewH = 0
-    // How far the view has been turned back against the device turning, in degrees.
-    private var turn = 0f
     private val view = Matrix()
     private val inverse = Matrix()
     private val tmp = FloatArray(2)
@@ -118,7 +118,6 @@ class CanvasSurfaceView(context: Context, private val engine: Long) : SurfaceVie
             view.postTranslate(-viewW / 2f, -viewH / 2f)
             view.postRotate(deg)
             view.postTranslate(w / 2f, h / 2f)
-            turn = ((turn + deg) % 360f + 540f) % 360f - 180f
             // The tilt is in screen space too; turn it with the paper.
             if (tiltX != 0f || tiltY != 0f) {
                 val a = Math.toRadians(deg.toDouble())
@@ -135,22 +134,32 @@ class CanvasSurfaceView(context: Context, private val engine: Long) : SurfaceVie
         viewH = h
     }
 
-    fun setCanvasSize(w: Int, h: Int) {
-        if (w != canvasW || h != canvasH) {
+    /** The painting's size, and which way up it is ([home], see [screenTurn]). */
+    fun setCanvasSize(w: Int, h: Int, home: Int) {
+        if (w != canvasW || h != canvasH || home != this.home) {
             canvasW = w
             canvasH = h
+            this.home = home
             fitted = false
         }
         fitIfReady()
     }
 
+    /** Fits the painting to the screen, the way up it was created. */
     fun fit() {
         if (width == 0 || canvasW == 0) return
-        val s = min(width * 0.92f / canvasW, height * 0.84f / canvasH)
+        val r = display?.rotation ?: 0
+        val q = screenTurn(home, r)
+        val (w, h) = if (q % 2 == 1) canvasH to canvasW else canvasW to canvasH
+        val s = min(width * 0.92f / w, height * 0.84f / h)
         fitScale = s
-        turn = 0f
-        view.setScale(s, s)
-        view.postTranslate((width - canvasW * s) / 2f, (height - canvasH * s) / 2f)
+        rotation = r
+        viewW = width
+        viewH = height
+        view.setTranslate(-canvasW / 2f, -canvasH / 2f)
+        view.postScale(s, s)
+        view.postRotate(90f * q)
+        view.postTranslate(width / 2f, height / 2f)
         pushView()
     }
 
@@ -205,7 +214,7 @@ class CanvasSurfaceView(context: Context, private val engine: Long) : SurfaceVie
         view.mapPoints(c)
         val s = scale()
         val rot = Math.toDegrees(atan2(m[Matrix.MSKEW_Y], m[Matrix.MSCALE_X]).toDouble()).toFloat()
-        return CanvasFrame(c[0], c[1], canvasW * s, canvasH * s, rot, turn)
+        return CanvasFrame(c[0], c[1], canvasW * s, canvasH * s, rot)
     }
 
     override fun surfaceCreated(holder: SurfaceHolder) {}

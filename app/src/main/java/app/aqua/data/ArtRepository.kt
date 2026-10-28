@@ -4,7 +4,8 @@ import org.json.JSONObject
 import java.io.File
 import java.util.UUID
 
-data class Artwork(val dir: File, val width: Int, val height: Int, val modified: Long) {
+/** A saved painting; [home] is which way up it is (the screen's quarter turns when it was created). */
+data class Artwork(val dir: File, val width: Int, val height: Int, val modified: Long, val home: Int = 0) {
     val id: String get() = dir.name
     val thumb: File get() = File(dir, "thumb.png")
 }
@@ -21,7 +22,7 @@ class ArtRepository(private val root: File) {
             runCatching {
                 val meta = File(dir, "meta.json")
                 val o = JSONObject(meta.readText())
-                Artwork(dir, o.getInt("width"), o.getInt("height"), meta.lastModified())
+                Artwork(dir, o.getInt("width"), o.getInt("height"), meta.lastModified(), o.optInt("home", 0) % 4)
             }.getOrNull()
         }
         .sortedByDescending { it.modified }

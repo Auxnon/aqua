@@ -192,7 +192,7 @@ export function createEditor(root, engine, canvas, { onExit }) {
   function refresh() {
     if (!id) return;
     info = engine.query();
-    if (info.width) view.setCanvasSize(info.width, info.height);
+    if (info.width) view.setCanvasSize(info.width, info.height, info.home ?? 0);
     if (panel === 'layers') layers.update(info);
     render();
   }
