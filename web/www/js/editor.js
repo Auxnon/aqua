@@ -51,6 +51,11 @@ export function createEditor(root, engine, canvas, { onExit }) {
     onTouchStart: () => setPanel(null),
     onOverviewHint: (on) => root.classList.toggle('overview-hint', on),
     onOverview: (frame) => leave(frame),
+    onTiltTurned: (t) => {
+      setTilt(t);
+      // Phone tilt is read in screen axes, which just turned; start again from here.
+      phone.gyro.start(t);
+    },
   });
 
   const phone = new PhoneTilt((t) => setTilt(t));

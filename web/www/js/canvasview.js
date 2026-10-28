@@ -56,11 +56,16 @@ class Mat {
   }
 }
 
+/** How far the screen is turned from the device's natural orientation, in degrees. */
+function screenAngle() {
+  return screen.orientation?.angle ?? window.orientation ?? 0;
+}
+
 export class CanvasView {
   constructor(canvas, engine, cb) {
     this.canvas = canvas;
     this.engine = engine;
-    this.cb = cb; // { onStrokeEnd, onUndo, onRedo, onSample, onTouchStart, onOverviewHint, onOverview }
+    this.cb = cb; // { onStrokeEnd, onUndo, onRedo, onSample, onTouchStart, onOverviewHint, onOverview, onTiltTurned }
     this.view = new Mat();
     this.inverse = new Mat();
     this.canvasW = 0;
@@ -87,7 +92,11 @@ export class CanvasView {
     on('pointercancel', (e) => this.up(e, true));
     on('wheel', (e) => this.wheel(e), { passive: false });
     on('contextmenu', (e) => e.preventDefault());
+    this.angle = screenAngle();
     new ResizeObserver(() => this.resize()).observe(canvas);
+    // A half turn keeps the window's size, so only the orientation says it happened.
+    if (screen.orientation) screen.orientation.addEventListener('change', () => this.resize());
+    else window.addEventListener('orientationchange', () => this.resize());
     this.resize();
   }
 
@@ -95,16 +104,32 @@ export class CanvasView {
     const dpr = window.devicePixelRatio || 1;
     const w = Math.max(1, Math.round(this.canvas.clientWidth * dpr));
     const h = Math.max(1, Math.round(this.canvas.clientHeight * dpr));
-    if (w === this.canvas.width && h === this.canvas.height && dpr === this.dpr) return;
-    // Keep what was in the middle of the screen in the middle.
+    const angle = screenAngle();
+    if (w === this.canvas.width && h === this.canvas.height && dpr === this.dpr && angle === this.angle) return;
     const [ow, oh] = [this.canvas.width, this.canvas.height];
+    const steps = (((angle - this.angle) / 90) % 4 + 4) % 4;
+    this.angle = angle;
     this.dpr = dpr;
     this.slop = 8 * dpr;
-    this.canvas.width = w;
-    this.canvas.height = h;
-    this.engine.resize(w, h);
+    if (w !== ow || h !== oh) {
+      this.canvas.width = w;
+      this.canvas.height = h;
+      this.engine.resize(w, h);
+    }
     if (this.fitted) {
-      this.view.postTranslate((w - ow) / 2, (h - oh) / 2);
+      // Keep what was in the middle of the screen in the middle. When the device
+      // turns the window turns under the paper, so the view turns the other way
+      // and the paper stays still in the hand; only the controls move.
+      this.view.postTranslate(-ow / 2, -oh / 2);
+      if (steps) this.view.postRotate(-90 * steps);
+      this.view.postTranslate(w / 2, h / 2);
+      if (steps && (this.tilt[0] || this.tilt[1])) {
+        // The tilt is in screen space too; turn it with the paper.
+        const a = (-90 * steps * Math.PI) / 180;
+        const [x, y] = this.tilt;
+        this.tilt = [x * Math.cos(a) - y * Math.sin(a), x * Math.sin(a) + y * Math.cos(a)];
+        this.cb.onTiltTurned?.(this.tilt);
+      }
       this.pushView();
     } else this.fitIfReady();
   }

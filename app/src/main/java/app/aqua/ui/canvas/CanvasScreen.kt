@@ -210,6 +210,11 @@ fun CanvasScreen(dir: File, onExit: (Arrival?) -> Unit) {
                     onRedo = { Native.redo(engine); refresh() }
                     onOverviewHint = { overviewHint = it }
                     onOverview = { leave(it) }
+                    onTiltTurned = { x, y ->
+                        tilt = Offset(x, y)
+                        // Phone tilt is read in screen axes, which just turned; start again from here.
+                        gyro.start(tilt)
+                    }
                 }.also { surface = it }
             },
             update = { v ->

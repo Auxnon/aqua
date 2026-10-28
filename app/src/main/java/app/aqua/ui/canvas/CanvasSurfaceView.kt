@@ -3,6 +3,7 @@ package app.aqua.ui.canvas
 import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Matrix
+import android.hardware.display.DisplayManager
 import android.view.MotionEvent
 import android.view.SurfaceHolder
 import android.view.SurfaceView
@@ -36,6 +37,8 @@ class CanvasSurfaceView(context: Context, private val engine: Long) : SurfaceVie
     /** True while a pinch is far enough out that letting go would leave for the gallery. */
     var onOverviewHint: (Boolean) -> Unit = {}
     var onOverview: (CanvasFrame) -> Unit = {}
+    /** The screen-space tilt after the device turned, so the paper stays tipped the same way. */
+    var onTiltTurned: (Float, Float) -> Unit = { _, _ -> }
     var eyedropper = false
 
     private var canvasW = 0
@@ -46,6 +49,9 @@ class CanvasSurfaceView(context: Context, private val engine: Long) : SurfaceVie
     private var overviewHint = false
     private var tiltX = 0f
     private var tiltY = 0f
+    private var rotation = -1
+    private var viewW = 0
+    private var viewH = 0
     private val view = Matrix()
     private val inverse = Matrix()
     private val tmp = FloatArray(2)
@@ -69,8 +75,61 @@ class CanvasSurfaceView(context: Context, private val engine: Long) : SurfaceVie
     private var lastX = 0f
     private var lastY = 0f
 
+    // A half turn keeps the window's size, so only the display says it happened.
+    private val displays = context.getSystemService(DisplayManager::class.java)
+    private val displayListener = object : DisplayManager.DisplayListener {
+        override fun onDisplayChanged(id: Int) {
+            val r = display?.rotation ?: return
+            if (rotation >= 0 && (r - rotation + 4) % 4 == 2) {
+                followDisplay(viewW, viewH)
+                pushView()
+            }
+        }
+
+        override fun onDisplayAdded(id: Int) {}
+        override fun onDisplayRemoved(id: Int) {}
+    }
+
     init {
         holder.addCallback(this)
+    }
+
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        displays.registerDisplayListener(displayListener, handler)
+    }
+
+    override fun onDetachedFromWindow() {
+        displays.unregisterDisplayListener(displayListener)
+        super.onDetachedFromWindow()
+    }
+
+    /**
+     * Keeps the paper still in the hand when the device turns: the window turns
+     * under it, so the view turns the other way and only the controls move.
+     */
+    private fun followDisplay(w: Int, h: Int) {
+        val r = display?.rotation ?: return
+        val steps = if (rotation < 0) 0 else (r - rotation + 4) % 4
+        if (steps != 0 && viewW > 0) {
+            val deg = -90f * steps
+            view.postTranslate(-viewW / 2f, -viewH / 2f)
+            view.postRotate(deg)
+            view.postTranslate(w / 2f, h / 2f)
+            // The tilt is in screen space too; turn it with the paper.
+            if (tiltX != 0f || tiltY != 0f) {
+                val a = Math.toRadians(deg.toDouble())
+                val c = cos(a).toFloat()
+                val s = sin(a).toFloat()
+                val x = tiltX * c - tiltY * s
+                tiltY = tiltX * s + tiltY * c
+                tiltX = x
+                onTiltTurned(tiltX, tiltY)
+            }
+        }
+        rotation = r
+        viewW = w
+        viewH = h
     }
 
     fun setCanvasSize(w: Int, h: Int) {
@@ -154,6 +213,7 @@ class CanvasSurfaceView(context: Context, private val engine: Long) : SurfaceVie
         } else {
             Native.resize(engine, w, h)
         }
+        followDisplay(w, h)
         fitIfReady()
         pushView()
     }
