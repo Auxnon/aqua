@@ -90,7 +90,8 @@ data class CanvasInfo(
                     opacity = l.getDouble("opacity").toFloat(),
                     visible = l.getBoolean("visible"),
                     wet = l.getBoolean("wet"),
-                    wetness = l.getDouble("wetness").toFloat(),
+                    // (JSON has no infinity or NaN; a broken value comes as null.)
+                    wetness = l.optDouble("wetness", 1.0).toFloat(),
                     drying = l.getDouble("drying").toFloat(),
                     flow = l.optDouble("flow", 0.5).toFloat(),
                 )

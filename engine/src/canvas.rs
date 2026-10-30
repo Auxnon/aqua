@@ -1081,7 +1081,8 @@ impl Canvas {
                 mapped_at_creation: false,
             });
         }
-        let raw: Vec<Dab> = dabs.iter().map(|d| d.1).collect();
+        let mut raw: Vec<Dab> = dabs.iter().map(|d| d.1).collect();
+        share_push(dabs, &mut raw);
         self.gpu.queue.write_buffer(&self.dab_buf, 0, bytemuck::cast_slice(&raw));
 
         let mut start = 0;
@@ -1298,7 +1299,8 @@ impl Canvas {
                     ws.probe.readback.unmap();
                     ws.probe.state.store(PROBE_IDLE, Ordering::Release);
                     if let Some(wet_tiles) = wet_tiles {
-                        ws.wetness = wet_tiles.iter().fold(0.0, |a, &b| a.max(b));
+                        // (A blown-up simulation must not take the app down with it.)
+                        ws.wetness = wet_tiles.iter().fold(0.0, |a, &b| if b.is_finite() { a.max(b) } else { a.max(4.0) });
                         // Dry enough and nobody is painting into it: release the wet state.
                         if ws.wetness < DRY && ws.idle_frames > 30 {
                             to_dry.push(i);
@@ -1558,6 +1560,27 @@ fn snapshot_tile(device: &wgpu::Device, enc: &mut wgpu::CommandEncoder, layer: &
         _ => None,
     };
     TileImage { dep, fix, wet }
+}
+
+/// Push dabs all drag from the same snapshot of the water, so overlapping ones
+/// drawn in the same frame would add up to more than a full drag, overshoot, and
+/// the water would grow without bound. Each dab's drag and shove are shared out
+/// between the push dabs around it, so where they pile up they add up to one.
+fn share_push(dabs: &[(DabKind, Dab)], raw: &mut [Dab]) {
+    let push: Vec<usize> = (0..dabs.len()).filter(|&i| dabs[i].0 == DabKind::Push).collect();
+    for &i in &push {
+        let [x, y, r, _] = dabs[i].1.pos_radius;
+        let n = push
+            .iter()
+            .filter(|&&j| {
+                let [xj, yj, ..] = dabs[j].1.pos_radius;
+                (xj - x).powi(2) + (yj - y).powi(2) < r * r
+            })
+            .count()
+            .max(1) as f32;
+        raw[i].shape[3] /= n;
+        raw[i].ink[0] /= n;
+    }
 }
 
 pub fn tv(t: &Tex) -> wgpu::BindingResource<'_> {

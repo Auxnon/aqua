@@ -507,7 +507,7 @@ impl Stroke {
                     return;
                 }
                 let reach = radius * 0.5;
-                dab.shape[3] = (s.strength * 0.6).clamp(0.0, 1.0);
+                dab.shape[3] = (s.strength * 0.9).clamp(0.0, 1.0);
                 dab.water_push = [0.0, self.dir[0] * reach, self.dir[1] * reach, 0.0];
                 dab.ink = [1.5 * s.strength * density, 0.0, 0.0, 0.0];
                 out.push((DabKind::Push, dab));
