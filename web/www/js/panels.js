@@ -187,13 +187,15 @@ export function palettePanel(current, onPick) {
     render();
   }
 
-  // The custom colour sliders (HSV).
-  const hsv = { h: 0, s: 0.7, v: 0.6 };
+  // The custom colour sliders (HSV), plus strength: how far the paint is let
+  // down with water, from full strength to a pale wash.
+  const hsv = { h: 0, s: 0.7, v: 0.6, w: 1 };
   const dot = h('span', { class: 'swatch static' });
   const emit = () => {
     const [r, g, b] = hsvToRgb(hsv.h, hsv.s, hsv.v);
-    dot.style.setProperty('--c', `rgb(${r * 255}, ${g * 255}, ${b * 255})`);
-    well = Pigment.fromRgb(r, g, b);
+    const full = Pigment.fromRgb(r, g, b);
+    well = hsv.w >= 1 ? full : full.map((k) => k * hsv.w);
+    Pigment.paintSwatch(dot, well);
     onPick(well);
   };
   picker.append(
@@ -201,6 +203,7 @@ export function palettePanel(current, onPick) {
     labeledSlider('Hue', hsv.h, (v) => { hsv.h = v; emit(); }, { min: 0, max: 360, format: (v) => `${Math.round(v)}°` }),
     labeledSlider('Saturation', hsv.s, (v) => { hsv.s = v; emit(); }),
     labeledSlider('Value', hsv.v, (v) => { hsv.v = v; emit(); }),
+    labeledSlider('Strength', hsv.w, (v) => { hsv.w = v; emit(); }, { min: 0.05 }),
   );
 
   // Painting, mixing and picking in the tray.

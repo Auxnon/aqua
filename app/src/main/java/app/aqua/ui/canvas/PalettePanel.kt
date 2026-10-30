@@ -258,15 +258,25 @@ private fun ColorSliders(initial: Pigment, onChange: (Pigment) -> Unit) {
     var h by remember { mutableStateOf(hsv[0]) }
     var s by remember { mutableStateOf(hsv[1]) }
     var v by remember { mutableStateOf(hsv[2]) }
-    fun emit() = onChange(Pigment.fromArgb(android.graphics.Color.HSVToColor(floatArrayOf(h, s, v))))
+    // How much water the paint is let down with: 100% is full strength, less is a paler wash.
+    var w by remember { mutableStateOf(initial.strength.coerceIn(MIN_STRENGTH, 1f)) }
+    fun pigment(): Pigment {
+        val full = Pigment.fromArgb(android.graphics.Color.HSVToColor(floatArrayOf(h, s, v)))
+        return if (w >= 1f) full else Pigment(FloatArray(4) { full.k[it] * w })
+    }
+    fun emit() = onChange(pigment())
     Column(Modifier.padding(top = 8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(28.dp).clip(RoundedCornerShape(14.dp)).background(Color(android.graphics.Color.HSVToColor(floatArrayOf(h, s, v)))))
+            PigmentSwatch(pigment(), size = 28.dp) {}
             Spacer(Modifier.width(8.dp))
             Text("Custom colour", color = AquaColors.TextDim, fontSize = 12.sp)
         }
         LabeledSlider("Hue", h, { h = it; emit() }, range = 0f..360f, format = { "${it.toInt()}°" })
         LabeledSlider("Saturation", s, { s = it; emit() })
         LabeledSlider("Value", v, { v = it; emit() })
+        LabeledSlider("Strength", w, { w = it; emit() }, range = MIN_STRENGTH..1f)
     }
 }
+
+/** The palest the strength slider goes; the tray's pick stops a little below this. */
+private const val MIN_STRENGTH = 0.05f
