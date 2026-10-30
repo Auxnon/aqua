@@ -4,8 +4,8 @@
 // editor flies from where the canvas was into its card.
 
 import { I } from './icons.js';
-import { deletePainting, duplicatePainting, listPaintings } from './store.js';
-import { h, icon, screenTurn } from './ui.js';
+import { deletePainting, duplicatePainting, getValue, listPaintings, setValue } from './store.js';
+import { h, icon, roundButton, screenTurn } from './ui.js';
 
 /** Corner radius of a card; the flying painting rounds off to match. */
 const CARD_CORNER = 6;
@@ -15,7 +15,8 @@ export function createGallery(root, { onOpen, onCreate }) {
   const empty = h('div', { class: 'empty' }, 'Tap + to start a painting');
   const title = h('h1', {}, 'Aqua');
   const fab = h('button', { class: 'fab', title: 'New painting', 'aria-label': 'New painting', onclick: () => newDialog() }, icon(I.add, 24));
-  root.append(title, grid, empty, fab);
+  const settings = roundButton(I.settings, 'Settings', () => settingsDialog(), { cls: 'dim' });
+  root.append(h('div', { class: 'gallery-head' }, title, settings), grid, empty, fab);
   // Cards keep each painting the way up it was created, so they turn back when the device turns.
   const turnCards = () => { if (!root.classList.contains('off')) reload(); };
   if (screen.orientation) screen.orientation.addEventListener('change', turnCards);
@@ -102,6 +103,21 @@ export function createGallery(root, { onOpen, onCreate }) {
       ['Cancel', () => true],
       ['Delete', async () => { await deletePainting(art.id); reload(); return true; }, 'danger'],
     ]);
+  }
+
+  async function settingsDialog() {
+    const pinch = (await getValue('pinchOut').catch(() => null)) === 'gallery' ? 'gallery' : 'fit';
+    const choice = (value, label) => {
+      const input = h('input', { type: 'radio', name: 'pinch', value, checked: pinch === value });
+      input.addEventListener('change', () => setValue('pinchOut', value).catch(() => {}));
+      return h('label', { class: 'choice' }, input, label);
+    };
+    dialog('Gestures', [
+      h('div', { class: 'caption' }, 'Pinch far out and let go'),
+      choice('fit', 'Fit the painting to the screen'),
+      choice('gallery', 'Go back to the gallery'),
+      h('p', { class: 'caption' }, 'Swipe up quickly with two fingers to go back to the gallery.'),
+    ], [['Done', () => true]]);
   }
 
   function newDialog() {

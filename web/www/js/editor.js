@@ -7,7 +7,7 @@ import { CanvasView } from './canvasview.js';
 import { ACCENT, PhoneTilt, TEXT, drawGimbal, gimbalOverlay, gimbalSvg } from './gimbal.js';
 import { I } from './icons.js';
 import { brushPanel, layersPanel, palettePanel } from './panels.js';
-import { writePainting } from './store.js';
+import { getValue, writePainting } from './store.js';
 import { h, railSlider, roundButton, setSelected } from './ui.js';
 
 const MAX_BRUSH = 300;
@@ -204,7 +204,7 @@ export function createEditor(root, engine, canvas, { onExit }) {
     dry.classList.toggle('shown', !!info.layers?.[info.active]?.wet);
     setSelected(layersB, panel === 'layers');
     setSelected(gimbalButton, gimbalOpen || keepTilt);
-    swatch.style.setProperty('--c', Pigment.css(color()));
+    Pigment.paintSwatch(swatch, color());
     setSelected(swatch, panel === 'palette');
     for (const { t, b: btn } of tools) setSelected(btn, t === tool);
     sizeRail.set(sizeToRail(b.size), `${Math.round(b.size)}`, (v) => setParams({ ...bp(), size: railToSize(v) }));
@@ -299,7 +299,7 @@ export function createEditor(root, engine, canvas, { onExit }) {
     else if (k === 'i') selectTool(Tool.Ink);
     else if (k === 'e') selectTool(Tool.Eraser);
     else if (k === 'k') selectTool(Tool.Eyedropper);
-    else if (k === '0') view.fit();
+    else if (k === '0') view.fit(true);
     else if (k === '=' || k === '+') view.zoomBy(1.25);
     else if (k === '-') view.zoomBy(0.8);
     else if (k === 'escape') {
@@ -318,6 +318,12 @@ export function createEditor(root, engine, canvas, { onExit }) {
   return {
     /** Shows a painting the engine has just loaded or created. */
     open(paintingId) {
+      // What pinching far out does, as set in the gallery's settings.
+      getValue('pinchOut').catch(() => null).then((v) => {
+        view.pinchOutToGallery = v === 'gallery';
+        root.classList.toggle('pinch-gallery', view.pinchOutToGallery);
+        hint.textContent = view.pinchOutToGallery ? 'Release for gallery' : 'Release to fit';
+      });
       id = paintingId;
       exiting = false;
       savedRevision = -1;

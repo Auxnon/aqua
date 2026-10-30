@@ -34,6 +34,11 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
+import app.aqua.data.Settings
+import app.aqua.data.PinchOut
+import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -84,6 +89,7 @@ fun GalleryScreen(onOpen: (File) -> Unit, arrival: Arrival? = null, onArrived: (
     val scope = rememberCoroutineScope()
     var items by remember { mutableStateOf<List<Artwork>>(emptyList()) }
     var creating by remember { mutableStateOf(false) }
+    var settings by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
 
     fun reload() {
@@ -131,13 +137,18 @@ fun GalleryScreen(onOpen: (File) -> Unit, arrival: Arrival? = null, onArrived: (
 
     Box(Modifier.fillMaxSize().background(AquaColors.Background)) {
         Column(Modifier.fillMaxSize().statusBarsPadding()) {
-            Text(
-                "Aqua",
-                modifier = Modifier.graphicsLayer { alpha = galleryAlpha }.padding(start = 20.dp, top = 18.dp, bottom = 12.dp),
-                color = AquaColors.Text,
-                fontSize = 28.sp,
-                fontWeight = FontWeight.Light,
-            )
+            Row(Modifier.fillMaxWidth().graphicsLayer { alpha = galleryAlpha }, verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "Aqua",
+                    modifier = Modifier.weight(1f).padding(start = 20.dp, top = 18.dp, bottom = 12.dp),
+                    color = AquaColors.Text,
+                    fontSize = 28.sp,
+                    fontWeight = FontWeight.Light,
+                )
+                IconButton(onClick = { settings = true }, modifier = Modifier.padding(top = 6.dp, end = 8.dp)) {
+                    Icon(Icons.Outlined.Settings, "Settings", tint = AquaColors.TextDim)
+                }
+            }
             if (items.isEmpty() && arrival == null) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text("Tap + to start a painting", color = AquaColors.TextDim)
@@ -177,6 +188,8 @@ fun GalleryScreen(onOpen: (File) -> Unit, arrival: Arrival? = null, onArrived: (
             FlyingPainting(arrival.thumb, arrival.from, to ?: Rect.Zero, screenTurn(home, rotation), if (to == null) 0f else flight.value)
         }
     }
+
+    if (settings) SettingsDialog(app.settings) { settings = false }
 
     if (creating) {
         NewCanvasDialog(
@@ -247,6 +260,33 @@ private fun ArtCard(
             dismissButton = { TextButton(onClick = { confirm = false }) { Text("Cancel") } },
         )
     }
+}
+
+/** Gesture settings. */
+@Composable
+private fun SettingsDialog(store: Settings, onDismiss: () -> Unit) {
+    var pinch by remember { mutableStateOf(store.pinchOut) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Gestures") },
+        text = {
+            Column {
+                Text("Pinch far out and let go", color = AquaColors.TextDim, fontSize = 13.sp)
+                listOf(PinchOut.FitView to "Fit the painting to the screen", PinchOut.Gallery to "Go back to the gallery").forEach { (v, label) ->
+                    Row(
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).clickable { pinch = v; store.pinchOut = v },
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        RadioButton(selected = pinch == v, onClick = { pinch = v; store.pinchOut = v })
+                        Text(label, color = AquaColors.Text)
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                Text("Swipe up quickly with two fingers to go back to the gallery.", color = AquaColors.TextDim, fontSize = 13.sp)
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Done") } },
+    )
 }
 
 private data class SizePreset(val label: String, val w: Int, val h: Int)

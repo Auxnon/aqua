@@ -1,5 +1,6 @@
 package app.aqua.ui.canvas
 
+import app.aqua.engine.Pigment
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -75,7 +76,7 @@ fun RoundButton(
 }
 
 @Composable
-fun Swatch(color: Color, modifier: Modifier = Modifier, size: Dp = 34.dp, selected: Boolean = false, onClick: () -> Unit) {
+fun Swatch(color: Color, modifier: Modifier = Modifier, size: Dp = 34.dp, selected: Boolean = false, ring: Color? = null, onClick: () -> Unit) {
     Box(
         modifier
             .size(size)
@@ -84,8 +85,18 @@ fun Swatch(color: Color, modifier: Modifier = Modifier, size: Dp = 34.dp, select
             .padding(if (selected) 3.dp else 0.dp)
             .clip(CircleShape)
             .background(color)
+            .then(if (ring != null) Modifier.border(2.5.dp, ring, CircleShape) else Modifier)
             .clickable(onClick = onClick),
     )
+}
+
+/**
+ * A paint's swatch. Paint thinned with water shows the pale tint it lays
+ * down, ringed with its full-strength colour so the pigment stays readable.
+ */
+@Composable
+fun PigmentSwatch(p: Pigment, modifier: Modifier = Modifier, size: Dp = 34.dp, selected: Boolean = false, onClick: () -> Unit) {
+    Swatch(Color(p.argb), modifier, size, selected, ring = if (p.strength < 0.97f) Color(p.masstoneArgb) else null, onClick = onClick)
 }
 
 @Composable
@@ -151,7 +162,7 @@ fun VerticalRailSlider(
     Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
         Box(
             Modifier
-                .width(30.dp)
+                .width(40.dp)
                 .height(height)
                 .pointerInput(Unit) {
                     detectDragGestures(onDragStart = { dragValue = current }) { change, drag ->
@@ -161,17 +172,17 @@ fun VerticalRailSlider(
                     }
                 }
                 .drawBehind {
-                    val w = 6.dp.toPx()
+                    val w = 10.dp.toPx()
                     val x = (size.width - w) / 2f
                     drawRoundRect(AquaColors.Raised, Offset(x, 0f), Size(w, size.height), CornerRadius(w / 2))
                     val y = size.height * (1f - current)
                     drawRoundRect(AquaColors.Accent.copy(alpha = 0.7f), Offset(x, y), Size(w, size.height - y), CornerRadius(w / 2))
-                    val th = 16.dp.toPx()
+                    val th = 24.dp.toPx()
                     drawRoundRect(
                         AquaColors.Text,
-                        Offset(size.width / 2f - th / 2f, (y - 4.dp.toPx()).coerceIn(0f, size.height - 8.dp.toPx())),
-                        Size(th, 8.dp.toPx()),
-                        CornerRadius(4.dp.toPx()),
+                        Offset(size.width / 2f - th / 2f, (y - 5.dp.toPx()).coerceIn(0f, size.height - 10.dp.toPx())),
+                        Size(th, 10.dp.toPx()),
+                        CornerRadius(5.dp.toPx()),
                     )
                 },
         )

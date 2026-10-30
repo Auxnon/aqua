@@ -81,6 +81,9 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
   flex: none;
 }
 .swatch.selected { border: 2px solid var(--text); box-shadow: inset 0 0 0 2px var(--panel-solid); }
+/* Paint thinned with water: its pale tint, ringed with the full-strength colour. */
+.swatch.thinned { box-shadow: inset 0 0 0 2.5px var(--ring); }
+.swatch.selected.thinned { box-shadow: inset 0 0 0 2px var(--panel-solid), inset 0 0 0 4.5px var(--ring); }
 .swatch.add { display: inline-grid; place-items: center; background: none; color: var(--text); }
 .swatch.static { width: 28px; height: 28px; }
 .swatch.top { width: 32px; height: 32px; margin: 0 6px; }
@@ -117,7 +120,10 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
   padding: env(safe-area-inset-top) 14px 100px;
   user-select: none;
 }
+.gallery-head { display: flex; align-items: center; justify-content: space-between; }
 .gallery h1 { font-weight: 300; font-size: 28px; margin: 18px 6px 12px; }
+.choice { display: flex; align-items: center; gap: 10px; padding: 8px 4px; cursor: pointer; }
+.choice input { accent-color: var(--accent); width: 18px; height: 18px; margin: 0; }
 .grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
@@ -199,8 +205,8 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 /* The controls fade away while pinching out to the gallery and while leaving. */
 .chrome { position: absolute; inset: 0; pointer-events: none; transition: opacity 200ms; }
 .chrome > * { pointer-events: auto; }
-.editor.exiting .chrome, .editor.overview-hint .chrome { opacity: 0; }
-.editor.exiting .chrome > *, .editor.overview-hint .chrome > * { pointer-events: none; }
+.editor.exiting .chrome, .editor.pinch-gallery.overview-hint .chrome { opacity: 0; }
+.editor.exiting .chrome > *, .editor.pinch-gallery.overview-hint .chrome > * { pointer-events: none; }
 
 .topbar {
   position: absolute;
@@ -237,10 +243,10 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
   align-items: center;
 }
 .rail-slider { display: flex; flex-direction: column; align-items: center; }
-.rail-track { position: relative; width: 30px; cursor: ns-resize; touch-action: none; }
-.rail-groove { position: absolute; left: 12px; width: 6px; top: 0; bottom: 0; border-radius: 3px; background: var(--raised); overflow: hidden; }
+.rail-track { position: relative; width: 40px; cursor: ns-resize; touch-action: none; }
+.rail-groove { position: absolute; left: 15px; width: 10px; top: 0; bottom: 0; border-radius: 5px; background: var(--raised); overflow: hidden; }
 .rail-fill { position: absolute; left: 0; right: 0; bottom: 0; background: rgba(143, 211, 203, 0.7); }
-.rail-thumb { position: absolute; left: 7px; width: 16px; height: 8px; border-radius: 4px; background: var(--text); }
+.rail-thumb { position: absolute; left: 8px; width: 24px; height: 10px; border-radius: 5px; background: var(--text); }
 .rail-label { color: var(--text-dim); font-size: 10px; margin-top: 4px; }
 
 .dock {

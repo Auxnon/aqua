@@ -11,7 +11,8 @@ thinking.
 
 There are two screens.
 
-**Gallery.** The title "Aqua" at the top left. Saved paintings sit in a grid of
+**Gallery.** The title "Aqua" at the top left, and a settings button at the top
+right (Gestures: what pinching far out does). Saved paintings sit in a grid of
 cards, newest first. Each card shows the thumbnail at the painting's own aspect
 ratio, with the date under it. A single primary button at the bottom right
 starts a new painting. A card's secondary action opens a menu with Duplicate and
@@ -65,7 +66,8 @@ zones.
 | Two fingers | Pan, zoom and rotate together (rotation snaps to 0° within 4°) |
 | Two-finger tap / three-finger tap | Undo / redo |
 | Pen seen once | From then on fingers only navigate (palm rejection) |
-| Pinch far out (below 45% of the fitted size) and release | Back to the gallery. The chrome fades and the painting flies into its card. |
+| Pinch far out (below 45% of the fitted size) and release | Fits the painting to the screen again, gliding there (default). With the gallery setting, back to the gallery instead: the chrome fades and the painting flies into its card. A pill says which ("Release to fit" / "Release for gallery"). |
+| Quick two-finger swipe up (at least 18% of the screen height within 450 ms, without much pinching) | Back to the gallery. A slower two-finger drag stays a pan. |
 | Back (system back, Escape) | Closes the gimbal, then any panel, then leaves for the gallery |
 
 Desktop versions add the following: the mouse wheel zooms at the cursor; the
@@ -79,7 +81,11 @@ B / W / I / E / K pick a tool; 0 fits the painting to the screen.
   (`BrushSettings::from_params`), and the per-tool defaults match.
 - **Picking a colour while on the eraser or water** switches to the
   watercolour brush.
-- **Palette.** The mixing tray has three modes: Paint, Mix and Pick. Mixed
+- **Palette.** The mixing tray has three modes: Paint, Mix and Pick. Picking
+  takes the paint up as thick as it lies: a wash spread thin over the tray
+  becomes a thinner paint (a lighter tint on the canvas), not a darker full
+  strength one. A thinned paint's swatch shows the tint, ringed with its
+  full-strength colour. Mixed
   colours that are picked up are remembered, up to 16. The tray is kept between
   sessions.
 - **Which way up a painting is.** A painting is fixed the way up it was

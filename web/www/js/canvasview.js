@@ -7,8 +7,12 @@
 
 import { screenAngle, screenTurn } from './ui.js';
 
-/** Pinching out below this fraction of the fitted size and letting go opens the gallery. */
+/** Pinching out below this fraction of the fitted size and letting go fits the view or opens the gallery. */
 const OVERVIEW_ZOOM = 0.45;
+/** A two-finger swipe up to the gallery: at least this fraction of the screen height... */
+const SWIPE_DISTANCE = 0.18;
+/** ...within this many milliseconds, so a slow two-finger pan stays a pan. */
+const SWIPE_MS = 450;
 
 /** 2D affine x' = a x + b y + c, y' = d x + e y + f (Android Matrix order). */
 class Mat {
@@ -74,6 +78,11 @@ export class CanvasView {
     this.enabled = false;
     this.tilt = [0, 0];
     this.home = 0;
+    // What pinching far out does: false fits the painting to the screen again, true opens the gallery.
+    this.pinchOutToGallery = false;
+    // Where a two-finger touch started, to tell a swipe up from a pan.
+    this.swipe = null;
+    this.fitAnim = 0;
     this.pointers = new Map();
     this.mode = 'none';
     this.drawPointer = -1;
@@ -143,18 +152,40 @@ export class CanvasView {
     this.fitIfReady();
   }
 
-  /** Fits the painting to the screen, the way up it was created. */
-  fit() {
+  /** Fits the painting to the screen, the way up it was created; `animate` glides there. */
+  fit(animate = false) {
     const { width, height } = this.canvas;
     if (!width || !this.canvasW) return;
+    cancelAnimationFrame(this.fitAnim);
     const q = screenTurn(this.home);
     const [w, h] = q % 2 ? [this.canvasH, this.canvasW] : [this.canvasW, this.canvasH];
     const s = Math.min((width * 0.92) / w, (height * 0.84) / h);
     this.fitScale = s;
     this.angle = screenAngle();
-    this.view = new Mat([s, 0, -this.canvasW * s / 2, 0, s, -this.canvasH * s / 2]);
-    this.view.postRotate(90 * q);
-    this.view.postTranslate(width / 2, height / 2);
+    if (!animate) {
+      this.place(width / 2, height / 2, s, 90 * q);
+      return;
+    }
+    // From where the painting is now: its centre, scale and angle (the shorter way round).
+    const [cx, cy] = this.view.map(this.canvasW / 2, this.canvasH / 2);
+    const s0 = this.view.scale();
+    const a0 = (this.view.angle() * 180) / Math.PI;
+    const a1 = a0 + ((((90 * q - a0) % 360) + 540) % 360) - 180;
+    const start = performance.now();
+    const step = (now) => {
+      const u = Math.min(1, (now - start) / 320);
+      const t = 1 - (1 - u) ** 3;
+      this.place(cx + (width / 2 - cx) * t, cy + (height / 2 - cy) * t, s0 * (s / s0) ** t, a0 + (a1 - a0) * t);
+      if (u < 1) this.fitAnim = requestAnimationFrame(step);
+    };
+    this.fitAnim = requestAnimationFrame(step);
+  }
+
+  /** Puts the painting's centre at (cx, cy), at scale `s` and turned `deg` degrees. */
+  place(cx, cy, s, deg) {
+    this.view = new Mat([s, 0, (-this.canvasW * s) / 2, 0, s, (-this.canvasH * s) / 2]);
+    this.view.postRotate(deg);
+    this.view.postTranslate(cx, cy);
     this.pushView();
   }
 
@@ -244,7 +275,7 @@ export class CanvasView {
     return [...this.pointers.values()].slice(0, 2).map((p) => p.pos);
   }
 
-  beginGesture() {
+  beginGesture(time = performance.now()) {
     this.gestureStart = this.view.copy();
     const pts = this.gesturePoints();
     this.gPointers = pts.length;
@@ -253,6 +284,7 @@ export class CanvasView {
       this.g0 = [(x0 + x1) / 2, (y0 + y1) / 2];
       this.gDist = Math.max(1, Math.hypot(x1 - x0, y1 - y0));
       this.gAngle = Math.atan2(y1 - y0, x1 - x0);
+      this.swipe ??= { time, x: this.g0[0], y: this.g0[1], dist: this.gDist };
     } else if (pts.length === 1) {
       this.g0 = pts[0];
     }
@@ -295,6 +327,8 @@ export class CanvasView {
     const isPen = e.pointerType === 'pen';
     if (this.pointers.size === 1) {
       this.cb.onTouchStart();
+      cancelAnimationFrame(this.fitAnim);
+      this.swipe = null;
       if (isPen) this.penSeen = true;
       this.downTime = e.timeStamp;
       this.maxPointers = 1;
@@ -302,7 +336,7 @@ export class CanvasView {
       const navButton = e.pointerType === 'mouse' && (e.button === 1 || e.button === 2 || this.space);
       if (navButton || (e.pointerType === 'touch' && this.penSeen)) {
         this.mode = 'gesture';
-        this.beginGesture();
+        this.beginGesture(e.timeStamp);
       } else if (this.eyedropper) {
         this.mode = 'eyedrop';
         this.sample(e);
@@ -323,16 +357,28 @@ export class CanvasView {
       }
       // A second finger right after the first means this was a gesture all along.
       const quick = e.timeStamp - this.downTime < 250;
+      // The first finger stays down and becomes one of the two navigating.
       this.engine.stroke(quick ? 3 : 2, new Float32Array(0));
-      this.pointers.delete(this.drawPointer);
       this.drawPointer = -1;
       this.mode = 'gesture';
       this.moved = !quick;
-      this.beginGesture();
+      this.beginGesture(e.timeStamp);
     } else if (this.mode === 'gesture' || this.mode === 'eyedrop') {
       this.mode = 'gesture';
-      this.beginGesture();
+      this.beginGesture(e.timeStamp);
     }
+  }
+
+  /** Whether two fingers lifting now ends a quick swipe up (to the gallery) rather than a pan or pinch. */
+  isSwipeUp(time) {
+    const sw = this.swipe;
+    if (!sw || this.pointers.size !== 2 || this.maxPointers !== 2 || time - sw.time > SWIPE_MS) return false;
+    const [[x0, y0], [x1, y1]] = this.gesturePoints();
+    const cx = (x0 + x1) / 2;
+    const cy = (y0 + y1) / 2;
+    const zoom = Math.hypot(x1 - x0, y1 - y0) / sw.dist;
+    const up = sw.y - cy;
+    return up > this.canvas.height * SWIPE_DISTANCE && Math.abs(cx - sw.x) < up * 0.6 && zoom > 0.75 && zoom < 1.33;
   }
 
   move(e) {
@@ -346,6 +392,14 @@ export class CanvasView {
 
   up(e, cancelled) {
     if (!this.pointers.has(e.pointerId)) return;
+    if (!cancelled && this.mode === 'gesture' && this.isSwipeUp(e.timeStamp)) {
+      this.pointers.delete(e.pointerId);
+      this.mode = 'none';
+      this.setOverviewHint(false);
+      const f = this.frame();
+      if (f) this.cb.onOverview(f);
+      return;
+    }
     this.pointers.delete(e.pointerId);
     if (this.mode === 'drawing' && e.pointerId === this.drawPointer) {
       if (cancelled) this.engine.stroke(3, new Float32Array(0));
@@ -362,7 +416,7 @@ export class CanvasView {
     }
     if (this.pointers.size > 0) {
       // Re-anchor on the pointers that remain, so lifting one finger doesn't jump.
-      this.beginGesture();
+      this.beginGesture(e.timeStamp);
       return;
     }
     this.mode = 'none';
@@ -372,8 +426,10 @@ export class CanvasView {
       if (this.maxPointers === 2) this.cb.onUndo();
       if (this.maxPointers === 3) this.cb.onRedo();
     } else if (this.overviewHint && this.pastOverview()) {
-      const f = this.frame();
-      if (f) this.cb.onOverview(f);
+      if (this.pinchOutToGallery) {
+        const f = this.frame();
+        if (f) this.cb.onOverview(f);
+      } else this.fit(true);
     }
     this.setOverviewHint(false);
   }

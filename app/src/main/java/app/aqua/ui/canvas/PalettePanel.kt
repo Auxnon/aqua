@@ -129,7 +129,7 @@ fun PalettePanel(current: Pigment, onPick: (Pigment) -> Unit, modifier: Modifier
         Spacer(Modifier.height(8.dp))
         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             presets.forEach { p ->
-                Swatch(Color(p.argb), size = 30.dp, selected = p == well) {
+                PigmentSwatch(p, size = 30.dp, selected = p == well) {
                     well = p
                     if (mode == TrayMode.Pick) mode = TrayMode.Paint
                     onPick(p)
@@ -245,7 +245,7 @@ fun PalettePanel(current: Pigment, onPick: (Pigment) -> Unit, modifier: Modifier
             Text("Mixed", color = AquaColors.TextDim, fontSize = 12.sp)
             Spacer(Modifier.height(4.dp))
             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                swatches.forEach { p -> Swatch(Color(p.argb), size = 26.dp, selected = p == current) { well = p; onPick(p) } }
+                swatches.forEach { p -> PigmentSwatch(p, size = 26.dp, selected = p == current) { well = p; onPick(p) } }
             }
         }
     }
@@ -254,7 +254,7 @@ fun PalettePanel(current: Pigment, onPick: (Pigment) -> Unit, modifier: Modifier
 /** Minimal HSV picker for colours that aren't in the preset row. */
 @Composable
 private fun ColorSliders(initial: Pigment, onChange: (Pigment) -> Unit) {
-    val hsv = remember { FloatArray(3).also { android.graphics.Color.colorToHSV(initial.argb, it) } }
+    val hsv = remember { FloatArray(3).also { android.graphics.Color.colorToHSV(initial.masstoneArgb, it) } }
     var h by remember { mutableStateOf(hsv[0]) }
     var s by remember { mutableStateOf(hsv[1]) }
     var v by remember { mutableStateOf(hsv[2]) }

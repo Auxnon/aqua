@@ -63,6 +63,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import app.aqua.AquaApp
+import app.aqua.data.PinchOut
 import app.aqua.engine.BrushParams
 import app.aqua.engine.CanvasInfo
 import app.aqua.engine.LayerOp
@@ -111,6 +112,7 @@ fun CanvasScreen(dir: File, onExit: (Arrival?) -> Unit) {
     var panel by remember { mutableStateOf(Panel.None) }
     var exiting by remember { mutableStateOf(false) }
     var overviewHint by remember { mutableStateOf(false) }
+    val pinchToGallery = remember { app.settings.pinchOut == PinchOut.Gallery }
     var surface by remember { mutableStateOf<CanvasSurfaceView?>(null) }
     // Which way the paper is tipped on screen; the gimbal sets it.
     var tilt by remember { mutableStateOf(Offset.Zero) }
@@ -120,7 +122,7 @@ fun CanvasScreen(dir: File, onExit: (Arrival?) -> Unit) {
     // Phone tilt keeps steering the paper after the gimbal is closed.
     var keepTilt by remember { mutableStateOf(false) }
     // The controls fade away while pinching out to the gallery and while leaving.
-    val chrome by animateFloatAsState(if (exiting || overviewHint) 0f else 1f, label = "chrome")
+    val chrome by animateFloatAsState(if (exiting || (overviewHint && pinchToGallery)) 0f else 1f, label = "chrome")
 
     fun refresh() {
         scope.launch(Dispatchers.IO) {
@@ -225,6 +227,7 @@ fun CanvasScreen(dir: File, onExit: (Arrival?) -> Unit) {
                     onUndo = { Native.undo(engine); refresh() }
                     onRedo = { Native.redo(engine); refresh() }
                     onOverviewHint = { overviewHint = it }
+                    pinchOutToGallery = pinchToGallery
                     onOverview = { leave(it) }
                     onTiltTurned = { x, y ->
                         tilt = Offset(x, y)
@@ -274,7 +277,7 @@ fun CanvasScreen(dir: File, onExit: (Arrival?) -> Unit) {
                     RoundButton(Icons.Outlined.Layers, "Layers", selected = panel == Panel.Layers) {
                         panel = if (panel == Panel.Layers) Panel.None else Panel.Layers
                     }
-                    Swatch(Color(color.argb), Modifier.padding(horizontal = 6.dp), size = 32.dp, selected = panel == Panel.Palette) {
+                    PigmentSwatch(color, Modifier.padding(horizontal = 6.dp), size = 32.dp, selected = panel == Panel.Palette) {
                         panel = if (panel == Panel.Palette) Panel.None else Panel.Palette
                     }
                 }
@@ -349,7 +352,7 @@ fun CanvasScreen(dir: File, onExit: (Arrival?) -> Unit) {
             modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 36.dp),
         ) {
             Text(
-                "Release for gallery",
+                if (pinchToGallery) "Release for gallery" else "Release to fit",
                 color = AquaColors.Text,
                 fontSize = 14.sp,
                 modifier = Modifier.clip(RoundedCornerShape(16.dp)).background(AquaColors.Panel).padding(horizontal = 16.dp, vertical = 8.dp),

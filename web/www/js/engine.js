@@ -77,13 +77,38 @@ export const Tool = { Watercolor: 0, Water: 1, Ink: 2, Eraser: 3, Eyedropper: -1
 
 export const LayerOp = { ADD: 0, REMOVE: 1, MOVE: 2, SELECT: 3, OPACITY: 4, VISIBLE: 5, RENAME: 6, DRY: 7, CLEAR: 8, DRYING_SPEED: 9, FLOW: 10 };
 
-/** A pigment: Kubelka-Munk absorption (rgb) and scattering at unit concentration. */
+/** Scattering of one unit of pigment (`pigment::UNIT_S` in the engine). */
+const UNIT_S = 0.05;
+
+/**
+ * A pigment: Kubelka-Munk absorption (rgb) and scattering. At unit
+ * concentration it is full strength; thinned with water it is less.
+ */
 export const Pigment = {
   fromRgb: (r, g, b) => Float32Array.from(pigment_from_rgb(r, g, b)),
   fromHex(hex) {
     const n = parseInt(hex.replace('#', ''), 16);
     return Pigment.fromRgb(((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255);
   },
+  /** How concentrated the paint is: 1 = full strength, less = thinned with water. */
+  strength: (p) => Math.min(1, Math.max(0, p[3] / UNIT_S)),
+  /** The colour at full strength. */
+  masstone(p) {
+    const s = Pigment.strength(p);
+    return s >= 1 ? p : p.map((v) => v / Math.max(s, 1e-4));
+  },
+  /**
+   * Styles a swatch button for a paint: thinned paint shows the pale tint it
+   * lays down, ringed with its full-strength colour.
+   */
+  paintSwatch(el, p) {
+    el.style.setProperty('--c', Pigment.css(p));
+    const thin = Pigment.strength(p) < 0.97;
+    el.classList.toggle('thinned', thin);
+    if (thin) el.style.setProperty('--ring', Pigment.css(Pigment.masstone(p)));
+    return el;
+  },
+  /** How it looks on white paper; thinned paint shows as its lighter tint. */
   css(p) {
     const [r, g, b] = pigment_to_rgb(p);
     const c = (v) => Math.round(Math.min(1, Math.max(0, v)) * 255);

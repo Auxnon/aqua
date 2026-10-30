@@ -1,5 +1,6 @@
 package app.aqua.ui.canvas
 
+import android.animation.ValueAnimator
 import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Matrix
@@ -8,6 +9,7 @@ import android.view.MotionEvent
 import android.view.SurfaceHolder
 import android.view.SurfaceView
 import android.view.ViewConfiguration
+import android.view.animation.DecelerateInterpolator
 import app.aqua.engine.Native
 import app.aqua.ui.CanvasFrame
 import app.aqua.ui.screenTurn
@@ -16,17 +18,24 @@ import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.math.min
+import kotlin.math.pow
 import kotlin.math.sin
 import kotlin.math.sqrt
 
-/** Pinching out below this fraction of the fitted size and letting go opens the gallery. */
+/** Pinching out below this fraction of the fitted size and letting go fits the view or opens the gallery. */
 private const val OVERVIEW_ZOOM = 0.45f
+/** A two-finger swipe up to the gallery: at least this fraction of the screen height... */
+private const val SWIPE_DISTANCE = 0.18f
+/** ...within this many milliseconds, so a slow two-finger pan stays a pan. */
+private const val SWIPE_MS = 450L
 
 /**
  * Hosts the engine's swapchain and turns touches into strokes and view gestures:
  * one finger / stylus paints, two fingers pan-zoom-rotate, a two-finger tap undoes
  * and a three-finger tap redoes. Once a stylus has been seen, fingers only navigate.
- * Pinching far out past the fitted view and letting go goes back to the gallery.
+ * Pinching far out past the fitted view and letting go fits the view again, or
+ * goes back to the gallery if [pinchOutToGallery]; a quick two-finger swipe up
+ * always goes back to the gallery.
  */
 @SuppressLint("ViewConstructor")
 class CanvasSurfaceView(context: Context, private val engine: Long) : SurfaceView(context), SurfaceHolder.Callback {
@@ -41,6 +50,8 @@ class CanvasSurfaceView(context: Context, private val engine: Long) : SurfaceVie
     /** The screen-space tilt after the device turned, so the paper stays tipped the same way. */
     var onTiltTurned: (Float, Float) -> Unit = { _, _ -> }
     var eyedropper = false
+    /** What pinching far out does: false fits the painting to the screen again, true opens the gallery. */
+    var pinchOutToGallery = false
 
     private var canvasW = 0
     private var canvasH = 0
@@ -76,6 +87,12 @@ class CanvasSurfaceView(context: Context, private val engine: Long) : SurfaceVie
     private var gPointers = 0
     private var lastX = 0f
     private var lastY = 0f
+    // Where a two-finger touch started, to tell a swipe up from a pan.
+    private var swipeTime = -1L
+    private var swipeX = 0f
+    private var swipeY = 0f
+    private var swipeDist = 1f
+    private var fitAnim: ValueAnimator? = null
 
     // A half turn keeps the window's size, so only the display says it happened.
     private val displays = context.getSystemService(DisplayManager::class.java)
@@ -145,9 +162,10 @@ class CanvasSurfaceView(context: Context, private val engine: Long) : SurfaceVie
         fitIfReady()
     }
 
-    /** Fits the painting to the screen, the way up it was created. */
-    fun fit() {
+    /** Fits the painting to the screen, the way up it was created; [animate] glides there. */
+    fun fit(animate: Boolean = false) {
         if (width == 0 || canvasW == 0) return
+        fitAnim?.cancel()
         val r = display?.rotation ?: 0
         val q = screenTurn(home, r)
         val (w, h) = if (q % 2 == 1) canvasH to canvasW else canvasW to canvasH
@@ -156,10 +174,34 @@ class CanvasSurfaceView(context: Context, private val engine: Long) : SurfaceVie
         rotation = r
         viewW = width
         viewH = height
+        if (!animate) {
+            place(width / 2f, height / 2f, s, 90f * q)
+            return
+        }
+        // From where the painting is now: its centre, scale and angle (the shorter way round).
+        val m = FloatArray(9).also { view.getValues(it) }
+        val c = floatArrayOf(canvasW / 2f, canvasH / 2f).also { view.mapPoints(it) }
+        val s0 = scale()
+        val a0 = Math.toDegrees(atan2(m[Matrix.MSKEW_Y], m[Matrix.MSCALE_X]).toDouble()).toFloat()
+        val a1 = a0 + ((90f * q - a0) % 360f + 540f) % 360f - 180f
+        val (cx, cy) = c[0] to c[1]
+        fitAnim = ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = 320
+            interpolator = DecelerateInterpolator(1.6f)
+            addUpdateListener {
+                val t = it.animatedValue as Float
+                place(cx + (width / 2f - cx) * t, cy + (height / 2f - cy) * t, s0 * (s / s0).pow(t), a0 + (a1 - a0) * t)
+            }
+            start()
+        }
+    }
+
+    /** Puts the painting's centre at (cx, cy), at scale [s] and turned [deg] degrees. */
+    private fun place(cx: Float, cy: Float, s: Float, deg: Float) {
         view.setTranslate(-canvasW / 2f, -canvasH / 2f)
         view.postScale(s, s)
-        view.postRotate(90f * q)
-        view.postTranslate(width / 2f, height / 2f)
+        view.postRotate(deg)
+        view.postTranslate(cx, cy)
         pushView()
     }
 
@@ -282,6 +324,12 @@ class CanvasSurfaceView(context: Context, private val engine: Long) : SurfaceVie
             g0y = (y0 + y1) / 2f
             gDist = hypot(x1 - x0, y1 - y0).coerceAtLeast(1f)
             gAngle = atan2(y1 - y0, x1 - x0)
+            if (swipeTime < 0) {
+                swipeTime = e.eventTime
+                swipeX = g0x
+                swipeY = g0y
+                swipeDist = gDist
+            }
         } else {
             g0x = e.getX(0)
             g0y = e.getY(0)
@@ -316,12 +364,24 @@ class CanvasSurfaceView(context: Context, private val engine: Long) : SurfaceVie
         pushView()
     }
 
+    /** Whether two fingers lifting now ends a quick swipe up (to the gallery) rather than a pan or pinch. */
+    private fun isSwipeUp(e: MotionEvent): Boolean {
+        if (swipeTime < 0 || e.pointerCount != 2 || maxPointers != 2 || e.eventTime - swipeTime > SWIPE_MS) return false
+        val cx = (e.getX(0) + e.getX(1)) / 2f
+        val cy = (e.getY(0) + e.getY(1)) / 2f
+        val zoom = hypot(e.getX(1) - e.getX(0), e.getY(1) - e.getY(0)) / swipeDist
+        val up = swipeY - cy
+        return up > height * SWIPE_DISTANCE && abs(cx - swipeX) < up * 0.6f && zoom in 0.75f..1.33f
+    }
+
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(e: MotionEvent): Boolean {
         when (e.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 requestUnbufferedDispatch(e)
                 onTouchStart()
+                fitAnim?.cancel()
+                swipeTime = -1L
                 val tool = e.getToolType(0)
                 val isStylus = tool == MotionEvent.TOOL_TYPE_STYLUS || tool == MotionEvent.TOOL_TYPE_ERASER
                 if (isStylus) stylusSeen = true
@@ -377,6 +437,10 @@ class CanvasSurfaceView(context: Context, private val engine: Long) : SurfaceVie
                     sendPoints(e, 2)
                     mode = Mode.None
                     onStrokeEnd()
+                } else if (mode == Mode.Gesture && isSwipeUp(e)) {
+                    mode = Mode.None
+                    setOverviewHint(false)
+                    frame()?.let(onOverview)
                 } else if (mode == Mode.Gesture) {
                     // Re-anchor on the pointers that remain, so lifting one finger doesn't jump.
                     val remaining = (0 until e.pointerCount).filter { it != e.actionIndex }
@@ -410,7 +474,12 @@ class CanvasSurfaceView(context: Context, private val engine: Long) : SurfaceVie
                             3 -> onRedo()
                         }
                     } else if (overviewHint && pastOverview()) {
-                        frame()?.let(onOverview)
+                        if (pinchOutToGallery) {
+                            frame()?.let(onOverview)
+                        } else {
+                            setOverviewHint(false)
+                            fit(animate = true)
+                        }
                     }
                     else -> {}
                 }

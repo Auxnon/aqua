@@ -153,7 +153,7 @@ export function palettePanel(current, onPick) {
   const modes = h('div', { class: 'modes' });
   const mixed = h('div', { class: 'mixed' });
 
-  const swatch = (p, size, selected, onclick) => h('button', { class: `swatch${selected ? ' selected' : ''}`, style: { width: `${size}px`, height: `${size}px`, '--c': Pigment.css(p) }, onclick });
+  const swatch = (p, size, selected, onclick) => Pigment.paintSwatch(h('button', { class: `swatch${selected ? ' selected' : ''}`, style: { width: `${size}px`, height: `${size}px` }, onclick }), p);
 
   function render() {
     presetRow.replaceChildren(

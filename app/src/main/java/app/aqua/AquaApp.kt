@@ -2,6 +2,7 @@ package app.aqua
 
 import android.app.Application
 import app.aqua.data.ArtRepository
+import app.aqua.data.Settings
 import app.aqua.engine.Native
 import java.io.File
 
@@ -17,6 +18,8 @@ class AquaApp : Application() {
     val paletteFile: File get() = File(filesDir, "palette.bin")
 
     val repo: ArtRepository by lazy { ArtRepository(File(filesDir, "artworks")) }
+
+    val settings: Settings by lazy { Settings(this) }
 
     fun savePalette() {
         Native.paletteSave(palette, paletteFile.path)

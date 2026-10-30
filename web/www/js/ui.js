@@ -89,7 +89,7 @@ export function railSlider(label, height = 160) {
   let onChange = () => {};
   const draw = () => {
     fill.style.height = `${value * 100}%`;
-    thumb.style.top = `calc(${(1 - value) * 100}% - 4px)`;
+    thumb.style.top = `calc(${(1 - value) * 100}% - 5px)`;
   };
   let start = null;
   track.addEventListener('pointerdown', (e) => {

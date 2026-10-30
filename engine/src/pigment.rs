@@ -39,9 +39,18 @@ pub fn from_srgb(rgb: [f32; 3]) -> Pigment {
     p
 }
 
-/// What a pigment (unit concentration) looks like on white paper, as sRGB.
+/// What a pigment looks like on white paper, as sRGB: thinned pigment (below
+/// unit concentration) as the lighter tint it lays down, anything thicker at
+/// unit concentration.
 pub fn to_srgb(p: Pigment) -> [f32; 3] {
-    film_over(normalize(p), [PAPER; 3]).map(linear_to_srgb)
+    let p = if p[3] > UNIT_S { normalize(p) } else { p };
+    film_over(p, [PAPER; 3]).map(linear_to_srgb)
+}
+
+/// How concentrated a pigment is, 0 (just water) to 1 (unit concentration, as
+/// [`from_srgb`] makes it). Thicker mixtures count as 1.
+pub fn strength(p: Pigment) -> f32 {
+    (p[3] / UNIT_S).clamp(0.0, 1.0)
 }
 
 /// Rescales a mixture to unit concentration.
@@ -106,6 +115,17 @@ mod tests {
         for i in 0..3 {
             assert!((back[i] - c[i]).abs() < 0.03, "{back:?}");
         }
+    }
+
+    #[test]
+    fn thinned_pigment_is_a_lighter_tint() {
+        let full = from_srgb([0.16, 0.20, 0.62]);
+        let thin = full.map(|v| v * 0.3);
+        let (a, b) = (to_srgb(full), to_srgb(thin));
+        assert!((0..3).all(|i| b[i] > a[i]), "{a:?} {b:?}");
+        assert!((strength(thin) - 0.3).abs() < 1e-4);
+        let thick = to_srgb(full.map(|v| v * 3.0));
+        assert!((0..3).all(|i| (thick[i] - a[i]).abs() < 1e-5), "{thick:?}");
     }
 
     #[test]
