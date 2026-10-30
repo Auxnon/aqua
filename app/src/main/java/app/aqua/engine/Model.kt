@@ -2,7 +2,7 @@ package app.aqua.engine
 
 import org.json.JSONObject
 
-enum class Tool(val id: Int) { Watercolor(0), Water(1), Ink(2), Eraser(3), Eyedropper(-1) }
+enum class Tool(val id: Int) { Watercolor(0), Water(1), Ink(2), Eraser(3), Push(4), Eyedropper(-1) }
 
 /** A pigment as Kubelka-Munk absorption (rgb) and scattering, at unit concentration. */
 data class Pigment(val k: FloatArray) {

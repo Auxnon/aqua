@@ -13,6 +13,9 @@ struct DabGlobals {
 // The layer's surface water and settled pigment (eraser only).
 @group(0) @binding(2) var surface: texture_2d<f32>;
 @group(0) @binding(3) var settled: texture_2d<f32>;
+// The layer's suspended pigment and wet ink (the push brush only).
+@group(0) @binding(4) var pig_src: texture_2d<f32>;
+@group(0) @binding(5) var ink_src: texture_2d<f32>;
 
 struct DabIn {
     @location(0) pos_radius: vec4<f32>,
@@ -160,6 +163,37 @@ fn fs_smear(v: VOut) -> WetOut {
     o.water = vec4<f32>(0.0);
     o.pigment = textureLoad(settled, vec2<i32>(v.clip.xy), 0) * lift;
     o.ink = vec4<f32>(0.0);
+    o.flux = vec4<f32>(max(-push.x, 0.0), max(push.x, 0.0), max(-push.y, 0.0), max(push.y, 0.0));
+    return o;
+}
+
+// The push brush: drags the water, and the paint and ink suspended in it, from
+// just behind the dab to under it, and gives the water a shove along the stroke.
+// It works on standing water at either end, so it can pull a wash out over dry
+// paper, but it never touches paint that has settled.
+@fragment
+fn fs_push(v: VOut) -> WetOut {
+    var o: WetOut;
+    o.water = vec4<f32>(0.0);
+    o.pigment = vec4<f32>(0.0);
+    o.ink = vec4<f32>(0.0);
+    o.flux = vec4<f32>(0.0);
+    if (G.wet < 0.5) {
+        return o;
+    }
+    let here = vec2<i32>(v.clip.xy);
+    let src = clamp(vec2<i32>(v.clip.xy - v.water_push.yz), vec2<i32>(0), vec2<i32>(G.canvas) - 1);
+    let w_here = textureLoad(surface, here, 0);
+    let w_src = textureLoad(surface, src, 0);
+    let wet = smoothstep(0.02, 0.25, max(w_here.x, w_src.x));
+    let c = coverage(v, v.clip);
+    let k = clamp(c * v.shape.w * wet, 0.0, 1.0);
+    // Surface water and the dampness of the paper under it go together, so a
+    // wash pushed out over dry paper stays a wet streak instead of soaking in.
+    o.water = vec4<f32>((w_src.xy - w_here.xy) * k, 0.0, 0.0);
+    o.pigment = (textureLoad(pig_src, src, 0) - textureLoad(pig_src, here, 0)) * k;
+    o.ink = (textureLoad(ink_src, src, 0) - textureLoad(ink_src, here, 0)) * k;
+    let push = normalize(v.water_push.yz + vec2<f32>(1e-6, 0.0)) * v.ink.x * c * wet;
     o.flux = vec4<f32>(max(-push.x, 0.0), max(push.x, 0.0), max(-push.y, 0.0), max(push.y, 0.0));
     return o;
 }

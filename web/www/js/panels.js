@@ -17,7 +17,7 @@ const pct = (v) => `${Math.round(v * 100)}%`;
 
 // ------------------------------------------------------------------ brush
 
-const TITLES = { [Tool.Watercolor]: 'Watercolour brush', [Tool.Water]: 'Clear water', [Tool.Ink]: 'Ink', [Tool.Eraser]: 'Eraser' };
+const TITLES = { [Tool.Watercolor]: 'Watercolour brush', [Tool.Water]: 'Clear water', [Tool.Ink]: 'Ink', [Tool.Eraser]: 'Eraser', [Tool.Push]: 'Push' };
 
 export function brushPanel(tool, params, onChange) {
   const p = { ...params };
@@ -40,8 +40,26 @@ export function brushPanel(tool, params, onChange) {
       s('Smoothing', 'smoothing'),
     ],
     [Tool.Eraser]: () => [s('Strength', 'strength'), s('Edge softness', 'softness', soft), s('Pressure → size', 'pressureSize')],
+    [Tool.Push]: () => [
+      s('Strength', 'strength'), s('Edge softness', 'softness', soft), s('Pressure → size', 'pressureSize'), s('Smoothing', 'smoothing'),
+      h('p', { class: 'caption' }, 'Pushes standing water and the paint in it. Does nothing on dry paper.'),
+    ],
   };
   return panel('brush-panel', h('div', { class: 'panel-title' }, TITLES[tool]), rows[tool]?.() ?? []);
+}
+
+// ------------------------------------------------------------------ eyedropper
+
+/** The eyedropper's two kinds: 'wash' reads whiter as thinner paint, 'classic' the exact colour. */
+export function pickerPanel(kind, onChange) {
+  const choice = (value, paths, title, detail) => h('button', { class: `pick-choice${kind === value ? ' on' : ''}`, onclick: () => onChange(value) },
+    icon(paths, 22),
+    h('span', {}, h('span', { class: 'pick-title' }, title), h('span', { class: 'caption' }, detail)),
+  );
+  return panel('brush-panel', h('div', { class: 'panel-title' }, 'Eyedropper'),
+    choice('wash', I.washPick, 'Wash', 'Whiter areas pick up thinner paint of a deeper pigment'),
+    choice('classic', I.dropper, 'Classic', 'The exact colour, as full-strength paint'),
+  );
 }
 
 // ------------------------------------------------------------------ layers

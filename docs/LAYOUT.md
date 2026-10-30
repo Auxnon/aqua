@@ -34,7 +34,7 @@ zones.
 │ ┃ water / bleed / strength                   │  side rail, vertically centred
 │                                              │
 │                [ brush] panel                │  brush panel sits above the dock
-│        (brush · water · ink · eraser · pick) │  tool dock, bottom centre
+│  (brush · water · ink · eraser · push · pick)│  tool dock, bottom centre
 └──────────────────────────────────────────────┘
 ```
 
@@ -47,10 +47,20 @@ zones.
   5. The current colour as a swatch, which opens the palette.
 - **Left rail.** Brush size on a log scale, then the current tool's main
   control: water for the watercolour and water brushes, bleed for ink, strength
-  for the eraser. Rail drags are relative, so grabbing a slider never makes it
+  for the eraser and push. Rail drags are relative, so grabbing a slider never makes it
   jump.
-- **Bottom dock.** Watercolour, clear water, ink, eraser and eyedropper, in that
-  order. Tapping the selected tool again opens its brush panel.
+- **Bottom dock.** Watercolour, clear water, ink, eraser, push and eyedropper,
+  in that order. Tapping the selected tool again opens its brush panel; for the
+  eyedropper it opens the choice of picker instead.
+- **Push** is a dry brush. It lays nothing down; it drags standing water, and
+  the paint and wet ink in it, along the stroke, and can pull a wash out over
+  dry paper. On dry paper it does nothing.
+- **Eyedropper kinds.** *Wash* (the default) reads the paint itself under the
+  point, summed over the visible layers, the same way the palette's Pick reads
+  the tray: a pale wash picks up as a thinned paint, and bare paper picks up
+  nothing. *Classic* takes the exact colour on screen as full-strength paint.
+  The dock icon shows which is on (a pipette over a drop for Wash), and the
+  choice is kept between sessions.
 - **Panels.** Only one is open at a time. Layers and Palette drop down from
   under the top-right group, and the brush panel sits above the dock. Touching
   the canvas closes any open panel.
@@ -73,13 +83,13 @@ zones.
 Desktop versions add the following: the mouse wheel zooms at the cursor; the
 middle button, the right button or space + drag pans; Ctrl/⌘+Z undoes and
 Shift+Ctrl/⌘+Z or Ctrl+Y redoes; `[` and `]` change the brush size;
-B / W / I / E / K pick a tool; 0 fits the painting to the screen.
+B / W / I / E / P / K pick a tool; 0 fits the painting to the screen.
 
 ## Behaviour every version shares
 
 - **Brush defaults and the parameter array** come from the engine
   (`BrushSettings::from_params`), and the per-tool defaults match.
-- **Picking a colour while on the eraser or water** switches to the
+- **Picking a colour while on the eraser, water or push** switches to the
   watercolour brush.
 - **Palette.** The mixing tray has three modes: Paint, Mix and Pick. Picking
   takes the paint up as thick as it lies: a wash spread thin over the tray

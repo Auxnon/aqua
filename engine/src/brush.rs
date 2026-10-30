@@ -10,6 +10,9 @@ pub enum Tool {
     Water = 1,
     Ink = 2,
     Eraser = 3,
+    /// A dry brush: lays nothing down, just pushes standing water (and the paint
+    /// and wet ink in it) along the stroke.
+    Push = 4,
 }
 
 impl Tool {
@@ -18,6 +21,7 @@ impl Tool {
             1 => Tool::Water,
             2 => Tool::Ink,
             3 => Tool::Eraser,
+            4 => Tool::Push,
             _ => Tool::Watercolor,
         }
     }
@@ -125,6 +129,8 @@ pub enum DabKind {
     Erase,
     /// the eraser in standing water: lifts settled pigment and pushes it along
     Smear,
+    /// the push brush: drags standing water and what is suspended in it along
+    Push,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -185,7 +191,7 @@ impl Stroke {
     fn spacing(&self, radius: f32) -> f32 {
         let frac = match self.settings.tool {
             Tool::Ink => 0.08,
-            Tool::Eraser => 0.15,
+            Tool::Eraser | Tool::Push => 0.15,
             _ => 0.12,
         };
         (radius * frac).max(0.5)
@@ -240,7 +246,7 @@ impl Stroke {
     /// paint (or ink, or water) into the paper, faster the harder it is pressed,
     /// so the mark slowly blooms outwards.
     pub fn dwell(&mut self, dt: f32, out: &mut Vec<(DabKind, Dab)>) {
-        if !self.started || self.settings.tool == Tool::Eraser {
+        if !self.started || matches!(self.settings.tool, Tool::Eraser | Tool::Push) {
             return;
         }
         self.still += dt;
@@ -492,6 +498,19 @@ impl Stroke {
                 let push = 2.0 * s.strength * density;
                 dab.water_push = [0.0, self.dir[0] * push, self.dir[1] * push, 0.0];
                 out.push((DabKind::Smear, dab));
+            }
+            Tool::Push => {
+                // Drags what lies half a radius behind the dab under it (water_push.yz,
+                // in pixels), mixing by the strength; ink.x is the extra shove given to
+                // the water. The first dab has no direction yet.
+                if step <= 0.0 {
+                    return;
+                }
+                let reach = radius * 0.5;
+                dab.shape[3] = (s.strength * 0.6).clamp(0.0, 1.0);
+                dab.water_push = [0.0, self.dir[0] * reach, self.dir[1] * reach, 0.0];
+                dab.ink = [1.5 * s.strength * density, 0.0, 0.0, 0.0];
+                out.push((DabKind::Push, dab));
             }
         }
     }

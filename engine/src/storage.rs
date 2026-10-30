@@ -203,6 +203,58 @@ pub fn begin_sample(canvas: &mut Canvas, x: f32, y: f32) -> Option<Readback> {
     Some(Readback::start(&gpu, &canvas.composite.tex, x as u32, y as u32, 1, 1))
 }
 
+/// Reads of the paint around a canvas point, layer by layer, for the wash
+/// eyedropper. Finish with [`PigmentSample::finish`].
+pub struct PigmentSample {
+    reads: Vec<(f32, Readback)>,
+    texels: f32,
+}
+
+/// Starts reading the pigment around (x, y) in every visible layer: settled
+/// paint, permanent ink and, on wet layers, what is still in the water. Like
+/// the tray's pick, this reads the paint itself rather than its colour, so a
+/// pale wash picks up as a thinned paint and bare paper as nothing.
+pub fn begin_sample_pigment(canvas: &mut Canvas, x: f32, y: f32) -> Option<PigmentSample> {
+    if x < 0.0 || y < 0.0 || x >= canvas.w as f32 || y >= canvas.h as f32 {
+        return None;
+    }
+    canvas.update(0);
+    // A small patch, so paper grain and granulation don't decide the pick.
+    const R: i32 = 3;
+    let (x0, y0) = ((x as i32 - R).max(0) as u32, (y as i32 - R).max(0) as u32);
+    let (x1, y1) = ((x as i32 + R + 1).min(canvas.w as i32) as u32, (y as i32 + R + 1).min(canvas.h as i32) as u32);
+    let (w, h) = (x1 - x0, y1 - y0);
+    let gpu = canvas.gpu().clone();
+    let mut reads = Vec::new();
+    for l in canvas.layers.iter().filter(|l| l.visible && l.opacity > 0.0) {
+        let mut texs = vec![&l.dep, &l.fix];
+        if let Some(ws) = &l.wet {
+            texs.extend([&ws.pig, &ws.ink]);
+        }
+        for t in texs {
+            reads.push((l.opacity, Readback::start(&gpu, &t.tex, x0, y0, w, h)));
+        }
+    }
+    Some(PigmentSample { reads, texels: (w * h) as f32 })
+}
+
+impl PigmentSample {
+    /// The paint under the point, or None where there is (next to) none.
+    pub async fn finish(self) -> Option<crate::pigment::Pigment> {
+        let mut acc = [0.0f32; 4];
+        for (opacity, r) in self.reads {
+            let px = r.read().await;
+            let Ok(f) = bytemuck::try_cast_slice::<u8, half::f16>(&px) else { continue };
+            for texel in f.as_chunks::<4>().0 {
+                for i in 0..4 {
+                    acc[i] += texel[i].to_f32().max(0.0) * opacity;
+                }
+            }
+        }
+        crate::pigment::picked(acc.map(|v| v / self.texels))
+    }
+}
+
 /// A composite texel read by [`begin_sample`] as sRGB 0..1.
 pub fn texel_srgb(px: &[u8]) -> Option<[f32; 3]> {
     let f: &[half::f16] = bytemuck::try_cast_slice(px.get(..8)?).ok()?;

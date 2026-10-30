@@ -39,6 +39,19 @@ pub fn from_srgb(rgb: [f32; 3]) -> Pigment {
     p
 }
 
+/// The thinnest paint a pick takes up, as a fraction of unit concentration.
+pub const MIN_PICK: f32 = 0.03;
+
+/// Paint picked up from where it lies (the tray or the canvas), as thick as it
+/// lies: thinner than unit concentration stays a thinned paint, anything thicker
+/// is taken at unit concentration, and barely tinted water isn't picked at all.
+pub fn picked(mean: Pigment) -> Option<Pigment> {
+    if mean[3] < UNIT_S * MIN_PICK {
+        return None;
+    }
+    Some(if mean[3] > UNIT_S { normalize(mean) } else { mean })
+}
+
 /// What a pigment looks like on white paper, as sRGB: thinned pigment (below
 /// unit concentration) as the lighter tint it lays down, anything thicker at
 /// unit concentration.

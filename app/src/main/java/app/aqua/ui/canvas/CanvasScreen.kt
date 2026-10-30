@@ -63,6 +63,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import app.aqua.AquaApp
+import app.aqua.data.PickKind
 import app.aqua.data.PinchOut
 import app.aqua.engine.BrushParams
 import app.aqua.engine.CanvasInfo
@@ -87,7 +88,7 @@ private const val MAX_BRUSH = 300f
 private fun sizeToRail(s: Float) = (ln(s.coerceIn(1f, MAX_BRUSH)) / ln(MAX_BRUSH))
 private fun railToSize(v: Float) = MAX_BRUSH.pow(v).coerceIn(1f, MAX_BRUSH)
 
-private enum class Panel { None, Layers, Palette, Brush }
+private enum class Panel { None, Layers, Palette, Brush, Picker }
 
 @Composable
 fun CanvasScreen(dir: File, onExit: (Arrival?) -> Unit) {
@@ -105,6 +106,7 @@ fun CanvasScreen(dir: File, onExit: (Arrival?) -> Unit) {
             Tool.Water to BrushParams(size = 40f, water = 0.8f, softness = 0.3f),
             Tool.Ink to BrushParams(size = 3f, load = 0.8f, softness = 0.05f, bristle = 0f, pressureSize = 0.8f, smoothing = 0.5f, splatter = 0.35f),
             Tool.Eraser to BrushParams(size = 40f, softness = 0.4f, bristle = 0f),
+            Tool.Push to BrushParams(size = 36f, softness = 0.4f, bristle = 0f),
         )
     }
     var paint by remember { mutableStateOf(Pigment.fromArgb(PRESET_PIGMENTS[4].second)) }
@@ -113,6 +115,7 @@ fun CanvasScreen(dir: File, onExit: (Arrival?) -> Unit) {
     var exiting by remember { mutableStateOf(false) }
     var overviewHint by remember { mutableStateOf(false) }
     val pinchToGallery = remember { app.settings.pinchOut == PinchOut.Gallery }
+    var pickKind by remember { mutableStateOf(app.settings.pickKind) }
     var surface by remember { mutableStateOf<CanvasSurfaceView?>(null) }
     // Which way the paper is tipped on screen; the gimbal sets it.
     var tilt by remember { mutableStateOf(Offset.Zero) }
@@ -165,18 +168,21 @@ fun CanvasScreen(dir: File, onExit: (Arrival?) -> Unit) {
     }
 
     fun selectTool(t: Tool) {
-        if (t == tool && t != Tool.Eyedropper) {
-            panel = if (panel == Panel.Brush) Panel.None else Panel.Brush
+        if (t == tool) {
+            // Tapping the selected tool again opens its panel: brush settings, or
+            // for the eyedropper which kind of picker it is.
+            val own = if (t == Tool.Eyedropper) Panel.Picker else Panel.Brush
+            panel = if (panel == own) Panel.None else own
             return
         }
         tool = t
         if (t != Tool.Eyedropper) brushTool = t
-        if (panel == Panel.Brush && t == Tool.Eyedropper) panel = Panel.None
+        if (panel == Panel.Brush || panel == Panel.Picker) panel = Panel.None
     }
 
     fun setColor(p: Pigment) {
         if (brushTool == Tool.Ink) ink = p else paint = p
-        if (brushTool == Tool.Eraser || brushTool == Tool.Water) {
+        if (brushTool == Tool.Eraser || brushTool == Tool.Water || brushTool == Tool.Push) {
             paint = p
             brushTool = Tool.Watercolor
             tool = Tool.Watercolor
@@ -238,7 +244,8 @@ fun CanvasScreen(dir: File, onExit: (Arrival?) -> Unit) {
             },
             update = { v ->
                 v.eyedropper = tool == Tool.Eyedropper
-                v.onSample = { rgb -> setColor(Pigment.fromRgb(rgb[0], rgb[1], rgb[2])) }
+                v.pickWash = pickKind == PickKind.Wash
+                v.onSample = { setColor(it) }
                 v.onTouchStart = { panel = Panel.None }
                 v.setCanvasSize(info.width, info.height, info.home)
             },
@@ -298,7 +305,7 @@ fun CanvasScreen(dir: File, onExit: (Arrival?) -> Unit) {
                 when (brushTool) {
                     Tool.Watercolor, Tool.Water -> VerticalRailSlider(bp.water, { params[brushTool] = bp.copy(water = it) }, height = 120.dp, label = "water")
                     Tool.Ink -> VerticalRailSlider(bp.bleed, { params[brushTool] = bp.copy(bleed = it) }, height = 120.dp, label = "bleed")
-                    Tool.Eraser -> VerticalRailSlider(bp.strength, { params[brushTool] = bp.copy(strength = it) }, height = 120.dp, label = "strength")
+                    Tool.Eraser, Tool.Push -> VerticalRailSlider(bp.strength, { params[brushTool] = bp.copy(strength = it) }, height = 120.dp, label = "strength")
                     Tool.Eyedropper -> {}
                 }
             }
@@ -318,7 +325,8 @@ fun CanvasScreen(dir: File, onExit: (Arrival?) -> Unit) {
                 RoundButton(Icons.Outlined.WaterDrop, "Clear water", selected = tool == Tool.Water, size = 48.dp) { selectTool(Tool.Water) }
                 RoundButton(Icons.Outlined.HistoryEdu, "Ink", selected = tool == Tool.Ink, size = 48.dp) { selectTool(Tool.Ink) }
                 RoundButton(EraserIcon, "Eraser", selected = tool == Tool.Eraser, size = 48.dp) { selectTool(Tool.Eraser) }
-                RoundButton(Icons.Outlined.Colorize, "Eyedropper", selected = tool == Tool.Eyedropper, size = 48.dp) { selectTool(Tool.Eyedropper) }
+                RoundButton(PushIcon, "Push", selected = tool == Tool.Push, size = 48.dp) { selectTool(Tool.Push) }
+                RoundButton(if (pickKind == PickKind.Wash) WashPickIcon else Icons.Outlined.Colorize, "Eyedropper", selected = tool == Tool.Eyedropper, size = 48.dp) { selectTool(Tool.Eyedropper) }
             }
 
             // Panels.
@@ -328,6 +336,10 @@ fun CanvasScreen(dir: File, onExit: (Arrival?) -> Unit) {
                 Panel.Palette -> PalettePanel(color, { setColor(it) }, panelMod.align(Alignment.TopEnd))
                 Panel.Brush -> BrushPanel(
                     brushTool, bp, { params[brushTool] = it },
+                    Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 80.dp),
+                )
+                Panel.Picker -> PickerPanel(
+                    pickKind, { pickKind = it; app.settings.pickKind = it; panel = Panel.None },
                     Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 80.dp),
                 )
                 Panel.None -> {}

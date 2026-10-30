@@ -6,9 +6,9 @@ import { Pigment, Tool, brushArray, brushParams, presetPigments, LayerOp } from 
 import { CanvasView } from './canvasview.js';
 import { ACCENT, PhoneTilt, TEXT, drawGimbal, gimbalOverlay, gimbalSvg } from './gimbal.js';
 import { I } from './icons.js';
-import { brushPanel, layersPanel, palettePanel } from './panels.js';
-import { getValue, writePainting } from './store.js';
-import { h, railSlider, roundButton, setSelected } from './ui.js';
+import { brushPanel, layersPanel, palettePanel, pickerPanel } from './panels.js';
+import { getValue, setValue, writePainting } from './store.js';
+import { h, icon, railSlider, roundButton, setSelected } from './ui.js';
 
 const MAX_BRUSH = 300;
 const sizeToRail = (s) => Math.log(Math.min(MAX_BRUSH, Math.max(1, s))) / Math.log(MAX_BRUSH);
@@ -28,10 +28,14 @@ export function createEditor(root, engine, canvas, { onExit }) {
     [Tool.Water]: brushParams(40, { water: 0.8, softness: 0.3 }),
     [Tool.Ink]: brushParams(3, { load: 0.8, softness: 0.05, bristle: 0, pressureSize: 0.8, smoothing: 0.5, splatter: 0.35 }),
     [Tool.Eraser]: brushParams(40, { softness: 0.4, bristle: 0 }),
+    [Tool.Push]: brushParams(36, { softness: 0.4, bristle: 0 }),
   };
+  // How the eyedropper reads the canvas: 'wash' (whiter = thinner paint) or 'classic'.
+  let pickKind = 'wash';
+  getValue('pickKind').catch(() => null).then((v) => { if (v === 'classic') { pickKind = v; view.pickWash = false; render(); } });
   let paint = presetPigments()[4].pigment;
   let ink = Pigment.fromHex('#111114');
-  let panel = null; // 'layers' | 'palette' | 'brush'
+  let panel = null; // 'layers' | 'palette' | 'brush' | 'picker'
   let exiting = false;
   let tilt = [0, 0];
   let gimbalOpen = false;
@@ -47,7 +51,7 @@ export function createEditor(root, engine, canvas, { onExit }) {
     onStrokeEnd: () => refresh(),
     onUndo: () => { engine.undo(); refresh(); },
     onRedo: () => { engine.redo(); refresh(); },
-    onSample: (rgb) => setColor(Pigment.fromRgb(rgb[0], rgb[1], rgb[2])),
+    onSample: (p) => setColor(p),
     onTouchStart: () => setPanel(null),
     onOverviewHint: (on) => root.classList.toggle('overview-hint', on),
     onOverview: (frame) => leave(frame),
@@ -87,6 +91,7 @@ export function createEditor(root, engine, canvas, { onExit }) {
     [Tool.Water, I.drop, 'Clear water (W)'],
     [Tool.Ink, I.quill, 'Ink (I)'],
     [Tool.Eraser, I.eraser, 'Eraser (E)'],
+    [Tool.Push, I.push, 'Push (P)'],
     [Tool.Eyedropper, I.dropper, 'Eyedropper (K)'],
   ].map(([t, ic, label]) => ({ t, b: roundButton(ic, label, () => selectTool(t), { size: 48 }) }));
   const dock = h('div', { class: 'dock' }, tools.map((x) => x.b));
@@ -111,13 +116,16 @@ export function createEditor(root, engine, canvas, { onExit }) {
   }
 
   function selectTool(t) {
-    if (t === tool && t !== Tool.Eyedropper) {
-      setPanel(panel === 'brush' ? null : 'brush');
+    if (t === tool) {
+      // Tapping the selected tool again opens its panel: brush settings, or
+      // for the eyedropper which kind of picker it is.
+      const own = t === Tool.Eyedropper ? 'picker' : 'brush';
+      setPanel(panel === own ? null : own);
       return;
     }
     tool = t;
     if (t !== Tool.Eyedropper) brushTool = t;
-    if (panel === 'brush') setPanel(t === Tool.Eyedropper ? null : 'brush', true);
+    if (panel === 'brush' || panel === 'picker') setPanel(t === Tool.Eyedropper ? null : 'brush', true);
     view.eyedropper = t === Tool.Eyedropper;
     pushBrush();
     render();
@@ -126,7 +134,7 @@ export function createEditor(root, engine, canvas, { onExit }) {
   function setColor(p) {
     if (brushTool === Tool.Ink) ink = p;
     else paint = p;
-    if (brushTool === Tool.Eraser || brushTool === Tool.Water) {
+    if (brushTool === Tool.Eraser || brushTool === Tool.Water || brushTool === Tool.Push) {
       paint = p;
       brushTool = Tool.Watercolor;
       tool = Tool.Watercolor;
@@ -145,7 +153,15 @@ export function createEditor(root, engine, canvas, { onExit }) {
       panelHost.append(layers.el);
     } else if (p === 'palette') panelHost.append(palettePanel(color(), (pg) => setColor(pg)));
     else if (p === 'brush') panelHost.append(brushPanel(brushTool, bp(), setParams));
-    panelHost.className = `panel-host ${p ?? ''}`;
+    else if (p === 'picker') {
+      panelHost.append(pickerPanel(pickKind, (k) => {
+        pickKind = k;
+        view.pickWash = k === 'wash';
+        setValue('pickKind', k).catch(() => {});
+        setPanel(null);
+      }));
+    }
+    panelHost.className = `panel-host ${p === 'picker' ? 'brush' : p ?? ''}`;
     render();
   }
 
@@ -207,12 +223,18 @@ export function createEditor(root, engine, canvas, { onExit }) {
     Pigment.paintSwatch(swatch, color());
     setSelected(swatch, panel === 'palette');
     for (const { t, b: btn } of tools) setSelected(btn, t === tool);
+    const dropper = tools.find((x) => x.t === Tool.Eyedropper).b;
+    if (dropper.dataset.kind !== pickKind) {
+      dropper.dataset.kind = pickKind;
+      dropper.replaceChildren(icon(pickKind === 'wash' ? I.washPick : I.dropper, 24));
+    }
     sizeRail.set(sizeToRail(b.size), `${Math.round(b.size)}`, (v) => setParams({ ...bp(), size: railToSize(v) }));
     const main = {
       [Tool.Watercolor]: ['water', 'water'],
       [Tool.Water]: ['water', 'water'],
       [Tool.Ink]: ['bleed', 'bleed'],
       [Tool.Eraser]: ['strength', 'strength'],
+      [Tool.Push]: ['strength', 'strength'],
     }[brushTool];
     mainRail.set(b[main[0]], main[1], (v) => setParams({ ...bp(), [main[0]]: v }));
     root.classList.toggle('exiting', exiting);
@@ -298,6 +320,7 @@ export function createEditor(root, engine, canvas, { onExit }) {
     else if (k === 'w') selectTool(Tool.Water);
     else if (k === 'i') selectTool(Tool.Ink);
     else if (k === 'e') selectTool(Tool.Eraser);
+    else if (k === 'p') selectTool(Tool.Push);
     else if (k === 'k') selectTool(Tool.Eyedropper);
     else if (k === '0') view.fit(true);
     else if (k === '=' || k === '+') view.zoomBy(1.25);

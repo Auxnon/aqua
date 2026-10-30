@@ -5,6 +5,7 @@
 // letting go goes back to the gallery. With a mouse, the wheel zooms and the
 // middle or right button (or space + drag) pans.
 
+import { Pigment } from './engine.js';
 import { screenAngle, screenTurn } from './ui.js';
 
 /** Pinching out below this fraction of the fitted size and letting go fits the view or opens the gallery. */
@@ -75,6 +76,8 @@ export class CanvasView {
     this.fitted = false;
     this.overviewHint = false;
     this.eyedropper = false;
+    /** The eyedropper reads the paint itself (a pale wash is a thinned paint) rather than its colour. */
+    this.pickWash = true;
     this.enabled = false;
     this.tilt = [0, 0];
     this.home = 0;
@@ -266,8 +269,13 @@ export class CanvasView {
 
   async sample(e) {
     const [x, y] = this.toCanvas(...this.pos(e));
-    const c = await this.engine.sample(x, y);
-    if (c) this.cb.onSample(c);
+    if (this.pickWash) {
+      const p = await this.engine.samplePigment(x, y);
+      if (p) this.cb.onSample(p);
+    } else {
+      const c = await this.engine.sample(x, y);
+      if (c) this.cb.onSample(Pigment.fromRgb(c[0], c[1], c[2]));
+    }
   }
 
   /** The two (or one) navigating pointers, in screen pixels. */

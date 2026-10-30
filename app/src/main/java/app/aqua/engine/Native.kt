@@ -37,6 +37,7 @@ object Native {
     @JvmStatic external fun redo(handle: Long)
     @JvmStatic external fun query(handle: Long): String
     @JvmStatic external fun sample(handle: Long, x: Float, y: Float): FloatArray?
+    @JvmStatic external fun samplePigment(handle: Long, x: Float, y: Float): FloatArray?
 
     @JvmStatic external fun pigmentFromRgb(r: Float, g: Float, b: Float): FloatArray
     @JvmStatic external fun pigmentToRgb(pigment: FloatArray): FloatArray

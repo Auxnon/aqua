@@ -221,5 +221,33 @@ fn main() {
     dry(&mut e);
     storage::export_png(e.canvas.as_mut().unwrap(), &out.join("tilt.png")).unwrap();
     undo_to_blank(&mut e, "tilt");
+
+    // Push: two identical wet washes; the right one is pushed outwards to the
+    // right and upwards with the dry brush, and a dry wash below is pushed too
+    // (it should not change).
+    e.new_canvas(800, 600, 0, 7, 0);
+    e.brush = BrushSettings { tool: Tool::Watercolor, size: 34.0, pigment: from_srgb([0.75, 0.25, 0.2]), water: 0.9, ..Default::default() };
+    for x in [100.0, 450.0] {
+        for r in 0..3 {
+            draw(&mut e, &(0..30).map(|i| InputPoint { x: x + i as f32 * 6.0, y: 100.0 + r as f32 * 40.0, pressure: 0.9 }).collect::<Vec<_>>());
+        }
+    }
+    draw(&mut e, &(0..30).map(|i| InputPoint { x: 450.0 + i as f32 * 6.0, y: 450.0, pressure: 0.9 }).collect::<Vec<_>>());
+    e.canvas.as_mut().unwrap().dry_layer(0);
+    for r in 0..3 {
+        draw(&mut e, &(0..30).map(|i| InputPoint { x: 100.0 + i as f32 * 6.0, y: 100.0 + r as f32 * 40.0, pressure: 0.9 }).collect::<Vec<_>>());
+        draw(&mut e, &(0..30).map(|i| InputPoint { x: 450.0 + i as f32 * 6.0, y: 100.0 + r as f32 * 40.0, pressure: 0.9 }).collect::<Vec<_>>());
+    }
+    e.brush = BrushSettings { tool: Tool::Push, size: 30.0, strength: 0.9, softness: 0.4, bristle: 0.0, ..Default::default() };
+    for k in 0..6 {
+        let y = 100.0 + k as f32 * 16.0;
+        draw(&mut e, &(0..25).map(|i| InputPoint { x: 560.0 + i as f32 * 8.0, y: y - i as f32 * 3.0, pressure: 0.9 }).collect::<Vec<_>>());
+    }
+    draw(&mut e, &(0..25).map(|i| InputPoint { x: 500.0 + i as f32 * 8.0, y: 450.0, pressure: 0.9 }).collect::<Vec<_>>());
+    frame(&mut e);
+    storage::export_png(e.canvas.as_mut().unwrap(), &out.join("push_wet.png")).unwrap();
+    dry(&mut e);
+    storage::export_png(e.canvas.as_mut().unwrap(), &out.join("push.png")).unwrap();
+    undo_to_blank(&mut e, "push");
     println!("wrote {}", out.display());
 }

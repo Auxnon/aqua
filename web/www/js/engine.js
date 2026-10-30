@@ -60,6 +60,7 @@ export class Engine {
   save() { return this.raw.save(); }
   exportPng() { return this.raw.export_png(); }
   sample(x, y) { return this.raw.sample(x, y); }
+  samplePigment(x, y) { return this.raw.sample_pigment(x, y); }
   layerOp(op, index, value = 0, name = undefined) { this.raw.layer_op(op, index, value, name); this.kick(); }
   undo() { this.raw.undo(); this.kick(); }
   redo() { this.raw.redo(); this.kick(); }
@@ -73,7 +74,7 @@ export class Engine {
   close() { this.raw.close(); this.kick(); }
 }
 
-export const Tool = { Watercolor: 0, Water: 1, Ink: 2, Eraser: 3, Eyedropper: -1 };
+export const Tool = { Watercolor: 0, Water: 1, Ink: 2, Eraser: 3, Push: 4, Eyedropper: -1 };
 
 export const LayerOp = { ADD: 0, REMOVE: 1, MOVE: 2, SELECT: 3, OPACITY: 4, VISIBLE: 5, RENAME: 6, DRY: 7, CLEAR: 8, DRYING_SPEED: 9, FLOW: 10 };
 

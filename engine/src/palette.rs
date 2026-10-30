@@ -14,8 +14,6 @@ pub struct Palette {
 }
 
 const TRAY: [f32; 3] = [0.88, 0.875, 0.86];
-/// The thinnest paint a pick takes up, as a fraction of unit concentration.
-const MIN_PICK: f32 = 0.03;
 
 impl Palette {
     pub fn new(w: usize, h: usize) -> Self {
@@ -134,12 +132,7 @@ impl Palette {
         if weight <= 0.0 {
             return None;
         }
-        let mean = acc.map(|v| v / weight);
-        // Barely tinted water isn't worth picking up.
-        if mean[3] < pigment::UNIT_S * MIN_PICK {
-            return None;
-        }
-        Some(if mean[3] > pigment::UNIT_S { pigment::normalize(mean) } else { mean })
+        pigment::picked(acc.map(|v| v / weight))
     }
 
     /// Renders the tray as ARGB_8888 pixels.

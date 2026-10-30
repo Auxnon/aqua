@@ -11,6 +11,7 @@ import android.view.SurfaceView
 import android.view.ViewConfiguration
 import android.view.animation.DecelerateInterpolator
 import app.aqua.engine.Native
+import app.aqua.engine.Pigment
 import app.aqua.ui.CanvasFrame
 import app.aqua.ui.screenTurn
 import kotlin.math.abs
@@ -42,7 +43,10 @@ class CanvasSurfaceView(context: Context, private val engine: Long) : SurfaceVie
     var onStrokeEnd: () -> Unit = {}
     var onUndo: () -> Unit = {}
     var onRedo: () -> Unit = {}
-    var onSample: (FloatArray) -> Unit = {}
+    /** The eyedropper picked paint up from the canvas. */
+    var onSample: (Pigment) -> Unit = {}
+    /** The eyedropper reads the paint itself (a pale wash is a thinned paint) rather than its colour. */
+    var pickWash = true
     var onTouchStart: () -> Unit = {}
     /** True while a pinch is far enough out that letting go would leave for the gallery. */
     var onOverviewHint: (Boolean) -> Unit = {}
@@ -312,7 +316,8 @@ class CanvasSurfaceView(context: Context, private val engine: Long) : SurfaceVie
 
     private fun sample(x: Float, y: Float) {
         val c = toCanvas(x, y)
-        Native.sample(engine, c[0], c[1])?.let(onSample)
+        if (pickWash) Native.samplePigment(engine, c[0], c[1])?.let { onSample(Pigment(it)) }
+        else Native.sample(engine, c[0], c[1])?.let { onSample(Pigment.fromRgb(it[0], it[1], it[2])) }
     }
 
     private fun beginGesture(e: MotionEvent) {

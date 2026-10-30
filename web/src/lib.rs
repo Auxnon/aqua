@@ -120,6 +120,16 @@ impl AquaEngine {
         })
     }
 
+    /// Resolves to the paint under a canvas point (k r, g, b, s), as thick as it
+    /// lies, or undefined where there is none: the wash eyedropper.
+    pub fn sample_pigment(&self, x: f32, y: f32) -> Promise {
+        let pending = self.engine.borrow_mut().canvas.as_mut().and_then(|c| storage::begin_sample_pigment(c, x, y));
+        future_to_promise(async move {
+            let Some(r) = pending else { return Ok(JsValue::UNDEFINED) };
+            Ok(r.finish().await.map_or(JsValue::UNDEFINED, |p| Float32Array::from(p.as_slice()).into()))
+        })
+    }
+
     /// op: 0 add, 1 remove, 2 move to value, 3 select, 4 opacity, 5 visible,
     /// 6 rename, 7 dry, 8 clear, 9 drying speed, 10 flood flow
     pub fn layer_op(&self, op: i32, index: i32, value: f32, name: Option<String>) {

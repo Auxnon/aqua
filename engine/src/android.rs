@@ -38,6 +38,7 @@ enum Cmd {
     Redo,
     Query(SyncSender<String>),
     Sample(f32, f32, SyncSender<Option<[f32; 3]>>),
+    SamplePigment(f32, f32, SyncSender<Option<crate::pigment::Pigment>>),
     Close(SyncSender<()>),
     Quit,
 }
@@ -257,6 +258,14 @@ fn handle_cmd(engine: &mut Engine, window: &mut Option<NativeWindow>, c: Cmd) ->
                 .and_then(|r| storage::texel_srgb(&pollster::block_on(r.read())));
             let _ = reply.send(v);
         }
+        Cmd::SamplePigment(x, y, reply) => {
+            let v = engine
+                .canvas
+                .as_mut()
+                .and_then(|c| storage::begin_sample_pigment(c, x, y))
+                .and_then(|r| pollster::block_on(r.finish()));
+            let _ = reply.send(v);
+        }
         Cmd::Close(reply) => {
             engine.canvas = None;
             engine.needs_present = true;
@@ -407,6 +416,16 @@ pub extern "system" fn Java_app_aqua_engine_Native_query(env: JNIEnv, _c: JClass
 pub extern "system" fn Java_app_aqua_engine_Native_sample(mut env: JNIEnv, _c: JClass, h: jlong, x: jfloat, y: jfloat) -> jfloatArray {
     match ask(h, |r| Cmd::Sample(x, y, r)).flatten() {
         Some(c) => float_array(&mut env, &c),
+        None => std::ptr::null_mut(),
+    }
+}
+
+/// The paint under a canvas point (k r, g, b, s), as thick as it lies, or null
+/// where there is none: the wash eyedropper.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_app_aqua_engine_Native_samplePigment(mut env: JNIEnv, _c: JClass, h: jlong, x: jfloat, y: jfloat) -> jfloatArray {
+    match ask(h, |r| Cmd::SamplePigment(x, y, r)).flatten() {
+        Some(p) => float_array(&mut env, &p),
         None => std::ptr::null_mut(),
     }
 }
