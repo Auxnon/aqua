@@ -566,3 +566,25 @@ fn push_ink(dab: Dab, ink: Pigment, bleed: f32, water: f32, out: &mut Vec<(DabKi
         out.push((DabKind::Wet, d));
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn points_parse_with_tilt() {
+        let p = InputPoint::parse(&[1.0, 2.0, 0.5, 0.3, -0.4, 5.0, 6.0, 1.0, 0.0, 0.0]);
+        assert_eq!(p.len(), 2);
+        assert_eq!((p[0].x, p[0].y, p[0].pressure, p[0].tilt), (1.0, 2.0, 0.5, [0.3, -0.4]));
+        assert_eq!((p[1].x, p[1].tilt), (5.0, [0.0, 0.0]));
+    }
+
+    #[test]
+    fn a_tilted_pen_stretches_the_dab_along_its_lean() {
+        let s = Stroke::new(BrushSettings::default(), 1);
+        let upright = s.lean(InputPoint { tilt: [0.0, 0.0], ..Default::default() });
+        assert_eq!(upright[2], 1.0);
+        let flat = s.lean(InputPoint { tilt: [0.0, 0.95], ..Default::default() });
+        assert!(flat[2] > 1.8 && flat[1] > 0.99, "{flat:?}");
+    }
+}
