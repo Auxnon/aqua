@@ -48,6 +48,7 @@ fun BrushPanel(tool: Tool, params: BrushParams, onChange: (BrushParams) -> Unit,
                 LabeledSlider("Edge softness", params.softness, { onChange(params.copy(softness = it)) }, range = 0.02f..1f)
                 LabeledSlider("Bristles", params.bristle, { onChange(params.copy(bristle = it)) })
                 LabeledSlider("Pressure → size", params.pressureSize, { onChange(params.copy(pressureSize = it)) })
+                LabeledSlider("Pen tilt → width", params.tilt, { onChange(params.copy(tilt = it)) })
                 LabeledSlider("Pressure → flow", params.pressureFlow, { onChange(params.copy(pressureFlow = it)) })
                 LabeledSlider("Smoothing", params.smoothing, { onChange(params.copy(smoothing = it)) })
             }
@@ -55,6 +56,7 @@ fun BrushPanel(tool: Tool, params: BrushParams, onChange: (BrushParams) -> Unit,
                 LabeledSlider("Water", params.water, { onChange(params.copy(water = it)) })
                 LabeledSlider("Edge softness", params.softness, { onChange(params.copy(softness = it)) }, range = 0.02f..1f)
                 LabeledSlider("Pressure → size", params.pressureSize, { onChange(params.copy(pressureSize = it)) })
+                LabeledSlider("Pen tilt → width", params.tilt, { onChange(params.copy(tilt = it)) })
                 LabeledSlider("Smoothing", params.smoothing, { onChange(params.copy(smoothing = it)) })
             }
             Tool.Ink -> {
@@ -68,17 +70,20 @@ fun BrushPanel(tool: Tool, params: BrushParams, onChange: (BrushParams) -> Unit,
                     format = { if (it < 0.02f) "off" else "${(it * 100).toInt()}%" },
                 )
                 LabeledSlider("Pressure → size", params.pressureSize, { onChange(params.copy(pressureSize = it)) })
+                LabeledSlider("Pen tilt → width", params.tilt, { onChange(params.copy(tilt = it)) })
                 LabeledSlider("Smoothing", params.smoothing, { onChange(params.copy(smoothing = it)) })
             }
             Tool.Eraser -> {
                 LabeledSlider("Strength", params.strength, { onChange(params.copy(strength = it)) })
                 LabeledSlider("Edge softness", params.softness, { onChange(params.copy(softness = it)) }, range = 0.02f..1f)
                 LabeledSlider("Pressure → size", params.pressureSize, { onChange(params.copy(pressureSize = it)) })
+                LabeledSlider("Pen tilt → width", params.tilt, { onChange(params.copy(tilt = it)) })
             }
             Tool.Push -> {
                 LabeledSlider("Strength", params.strength, { onChange(params.copy(strength = it)) })
                 LabeledSlider("Edge softness", params.softness, { onChange(params.copy(softness = it)) }, range = 0.02f..1f)
                 LabeledSlider("Pressure → size", params.pressureSize, { onChange(params.copy(pressureSize = it)) })
+                LabeledSlider("Pen tilt → width", params.tilt, { onChange(params.copy(tilt = it)) })
                 LabeledSlider("Smoothing", params.smoothing, { onChange(params.copy(smoothing = it)) })
                 Text("Pushes standing water and the paint in it. Does nothing on dry paper.", color = AquaColors.TextDim, fontSize = 12.sp)
             }

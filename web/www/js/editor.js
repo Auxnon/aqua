@@ -26,12 +26,13 @@ export function createEditor(root, engine, canvas, { onExit }) {
   const params = {
     [Tool.Watercolor]: brushParams(28),
     [Tool.Water]: brushParams(40, { water: 0.8, softness: 0.3 }),
-    [Tool.Ink]: brushParams(3, { load: 0.8, softness: 0.05, bristle: 0, pressureSize: 0.8, smoothing: 0.5, splatter: 0.35 }),
+    [Tool.Ink]: brushParams(3, { load: 0.8, softness: 0.05, bristle: 0, pressureSize: 0.8, smoothing: 0.5, splatter: 0.35, tilt: 0.25 }),
     [Tool.Eraser]: brushParams(40, { softness: 0.4, bristle: 0 }),
     [Tool.Push]: brushParams(36, { softness: 0.4, bristle: 0 }),
   };
   // How the eyedropper reads the canvas: 'wash' (whiter = thinner paint) or 'classic'.
   let pickKind = 'wash';
+  let penEraser = false;
   getValue('pickKind').catch(() => null).then((v) => { if (v === 'classic') { pickKind = v; view.pickWash = false; render(); } });
   let paint = presetPigments()[4].pigment;
   let ink = Pigment.fromHex('#111114');
@@ -53,6 +54,12 @@ export function createEditor(root, engine, canvas, { onExit }) {
     onRedo: () => { engine.redo(); refresh(); },
     onSample: (p) => setColor(p),
     onTouchStart: () => setPanel(null),
+    onPenEraser: (on) => {
+      if (on === penEraser) return;
+      penEraser = on;
+      pushBrush();
+      render();
+    },
     onOverviewHint: (on) => root.classList.toggle('overview-hint', on),
     onOverview: (frame) => leave(frame),
     onTiltTurned: (t) => {
@@ -106,7 +113,9 @@ export function createEditor(root, engine, canvas, { onExit }) {
 
   // ---------------------------------------------------------------- behaviour
   function pushBrush() {
-    engine.setBrush(brushTool, brushArray(bp(), color()));
+    // While a pen is turned round to its eraser end, strokes erase.
+    const t = penEraser ? Tool.Eraser : brushTool;
+    engine.setBrush(t, brushArray(params[t], color()));
   }
 
   function setParams(p) {
@@ -222,7 +231,7 @@ export function createEditor(root, engine, canvas, { onExit }) {
     setSelected(gimbalButton, gimbalOpen || keepTilt);
     Pigment.paintSwatch(swatch, color());
     setSelected(swatch, panel === 'palette');
-    for (const { t, b: btn } of tools) setSelected(btn, t === tool);
+    for (const { t, b: btn } of tools) setSelected(btn, t === tool || (t === Tool.Eraser && penEraser));
     const dropper = tools.find((x) => x.t === Tool.Eyedropper).b;
     if (dropper.dataset.kind !== pickKind) {
       dropper.dataset.kind = pickKind;

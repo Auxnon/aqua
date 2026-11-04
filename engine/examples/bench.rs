@@ -13,7 +13,7 @@ fn main() {
     // Zig-zag wash over the whole sheet.
     for row in 0..9 {
         let y = 100.0 + row as f32 * 220.0;
-        let pts: Vec<InputPoint> = (0..=40).map(|i| InputPoint { x: 60.0 + i as f32 * 48.0, y, pressure: 1.0 }).collect();
+        let pts: Vec<InputPoint> = (0..=40).map(|i| InputPoint { x: 60.0 + i as f32 * 48.0, y, pressure: 1.0, tilt: [0.0; 2] }).collect();
         e.stroke(0, &pts[..1]);
         e.stroke(1, &pts[1..]);
         e.stroke(2, &pts[40..]);
@@ -28,7 +28,7 @@ fn main() {
         let pts: Vec<InputPoint> = (0..=80)
             .map(|i: i32| {
                 let t = i as f32 / 80.0;
-                InputPoint { x: a.0 + (b.0 - a.0) * t, y: a.1 + (b.1 - a.1) * t, pressure: 1.0 }
+                InputPoint { x: a.0 + (b.0 - a.0) * t, y: a.1 + (b.1 - a.1) * t, pressure: 1.0, tilt: [0.0; 2] }
             })
             .collect();
         e.stroke(0, &pts[..1]);

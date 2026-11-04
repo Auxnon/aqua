@@ -45,7 +45,7 @@ fn sim(device: &wgpu::Device, label: &str, src: &str) -> wgpu::ComputePipeline {
     compute(device, &m, "main")
 }
 
-pub const DAB_ATTRS: [wgpu::VertexAttribute; 5] = wgpu::vertex_attr_array![0 => Float32x4, 1 => Float32x4, 2 => Float32x4, 3 => Float32x4, 4 => Float32x4];
+pub const DAB_ATTRS: [wgpu::VertexAttribute; 6] = wgpu::vertex_attr_array![0 => Float32x4, 1 => Float32x4, 2 => Float32x4, 3 => Float32x4, 4 => Float32x4, 5 => Float32x4];
 
 fn dab_pipeline(device: &wgpu::Device, m: &wgpu::ShaderModule, entry: &str, targets: usize, blend: wgpu::BlendState) -> wgpu::RenderPipeline {
     let t: Vec<Option<wgpu::ColorTargetState>> =

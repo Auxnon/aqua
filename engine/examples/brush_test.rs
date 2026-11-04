@@ -20,7 +20,7 @@ fn frame(e: &mut Engine) {
 
 /// Touches down at (x, y) and holds still for `secs`.
 fn hold(e: &mut Engine, x: f32, y: f32, pressure: f32, secs: f32) {
-    let p = InputPoint { x, y, pressure };
+    let p = InputPoint { x, y, pressure, tilt: [0.0; 2] };
     e.stroke(0, &[p]);
     for _ in 0..(secs / DT) as u32 {
         frame(e);
@@ -116,12 +116,12 @@ fn main() {
     // Splatter: pressure jabs along a line, and a stroke that ends in a fast flick.
     e.brush = BrushSettings { tool: Tool::Ink, size: 4.0, pigment: black, load: 0.8, bleed: 0.3, splatter: 0.7, softness: 0.05, bristle: 0.0, pressure_size: 0.8, ..Default::default() };
     let jabs: Vec<InputPoint> = (0..60)
-        .map(|i| InputPoint { x: 80.0 + i as f32 * 6.0, y: 450.0, pressure: if i % 15 == 7 { 1.0 } else { 0.3 } })
+        .map(|i| InputPoint { x: 80.0 + i as f32 * 6.0, y: 450.0, pressure: if i % 15 == 7 { 1.0 } else { 0.3 }, tilt: [0.0; 2] })
         .collect();
     draw(&mut e, &jabs);
-    let mut flick: Vec<InputPoint> = (0..40).map(|i| InputPoint { x: 80.0 + i as f32 * 5.0, y: 560.0, pressure: 0.5 }).collect();
+    let mut flick: Vec<InputPoint> = (0..40).map(|i| InputPoint { x: 80.0 + i as f32 * 5.0, y: 560.0, pressure: 0.5, tilt: [0.0; 2] }).collect();
     for k in 1..=4 {
-        flick.push(InputPoint { x: 280.0 + (k * k) as f32 * 9.0, y: 560.0 - (k * k) as f32 * 3.0, pressure: 0.5 - k as f32 * 0.1 });
+        flick.push(InputPoint { x: 280.0 + (k * k) as f32 * 9.0, y: 560.0 - (k * k) as f32 * 3.0, pressure: 0.5 - k as f32 * 0.1, tilt: [0.0; 2] });
     }
     draw(&mut e, &flick);
 
@@ -142,7 +142,7 @@ fn main() {
         let scrub = |cx: f32, cy: f32, r: f32| -> Vec<InputPoint> {
             (0..80).map(|i| {
                 let a = i as f32 * 0.45;
-                InputPoint { x: cx + a.cos() * r * (i as f32 / 80.0), y: cy + a.sin() * r * (i as f32 / 80.0), pressure: 1.0 }
+                InputPoint { x: cx + a.cos() * r * (i as f32 / 80.0), y: cy + a.sin() * r * (i as f32 / 80.0), pressure: 1.0, tilt: [0.0; 2] }
             }).collect()
         };
         draw(&mut e, &scrub(400.0, 400.0, 70.0));
@@ -170,9 +170,9 @@ fn main() {
     e.brush = BrushSettings { tool: Tool::Watercolor, size: 40.0, pigment: from_srgb([0.2, 0.3, 0.7]), water: 1.0, ..Default::default() };
     for row in 0..3 {
         let y = 120.0 + row as f32 * 60.0;
-        draw(&mut e, &(0..60).map(|i| InputPoint { x: 80.0 + i as f32 * 7.0, y, pressure: 0.8 }).collect::<Vec<_>>());
+        draw(&mut e, &(0..60).map(|i| InputPoint { x: 80.0 + i as f32 * 7.0, y, pressure: 0.8, tilt: [0.0; 2] }).collect::<Vec<_>>());
     }
-    let line = |x: f32| (0..40).map(|i| InputPoint { x, y: 60.0 + i as f32 * 7.0, pressure: 0.8 }).collect::<Vec<_>>();
+    let line = |x: f32| (0..40).map(|i| InputPoint { x, y: 60.0 + i as f32 * 7.0, pressure: 0.8, tilt: [0.0; 2] }).collect::<Vec<_>>();
     e.brush = BrushSettings { tool: Tool::Eraser, size: 20.0, strength: 0.8, softness: 0.4, bristle: 0.0, ..Default::default() };
     draw(&mut e, &line(200.0));
     for _ in 0..200 {
@@ -191,7 +191,7 @@ fn main() {
     // Beads gather along the lower edges and run as drips.
     e.new_canvas(700, 600, 0, 7, 0);
     e.canvas.as_mut().unwrap().set_tilt(0.0, 1.0);
-    let row = |x: f32, y: f32| (0..40).map(|i| InputPoint { x: x + i as f32 * 6.0, y, pressure: 0.9 }).collect::<Vec<_>>();
+    let row = |x: f32, y: f32| (0..40).map(|i| InputPoint { x: x + i as f32 * 6.0, y, pressure: 0.9, tilt: [0.0; 2] }).collect::<Vec<_>>();
     e.brush = BrushSettings { tool: Tool::Watercolor, size: 30.0, pigment: from_srgb([0.2, 0.35, 0.7]), water: 1.0, ..Default::default() };
     for r in 0..3 {
         draw(&mut e, &row(60.0, 80.0 + r as f32 * 40.0));
@@ -234,31 +234,31 @@ fn main() {
     e.brush = BrushSettings { tool: Tool::Watercolor, size: 34.0, pigment: from_srgb([0.75, 0.25, 0.2]), water: 0.9, ..Default::default() };
     for x in [100.0, 450.0] {
         for r in 0..3 {
-            draw(&mut e, &(0..30).map(|i| InputPoint { x: x + i as f32 * 6.0, y: 100.0 + r as f32 * 40.0, pressure: 0.9 }).collect::<Vec<_>>());
+            draw(&mut e, &(0..30).map(|i| InputPoint { x: x + i as f32 * 6.0, y: 100.0 + r as f32 * 40.0, pressure: 0.9, tilt: [0.0; 2] }).collect::<Vec<_>>());
         }
     }
-    draw(&mut e, &(0..30).map(|i| InputPoint { x: 450.0 + i as f32 * 6.0, y: 450.0, pressure: 0.9 }).collect::<Vec<_>>());
+    draw(&mut e, &(0..30).map(|i| InputPoint { x: 450.0 + i as f32 * 6.0, y: 450.0, pressure: 0.9, tilt: [0.0; 2] }).collect::<Vec<_>>());
     e.canvas.as_mut().unwrap().dry_layer(0);
     for r in 0..3 {
-        draw(&mut e, &(0..30).map(|i| InputPoint { x: 100.0 + i as f32 * 6.0, y: 100.0 + r as f32 * 40.0, pressure: 0.9 }).collect::<Vec<_>>());
-        draw(&mut e, &(0..30).map(|i| InputPoint { x: 450.0 + i as f32 * 6.0, y: 100.0 + r as f32 * 40.0, pressure: 0.9 }).collect::<Vec<_>>());
+        draw(&mut e, &(0..30).map(|i| InputPoint { x: 100.0 + i as f32 * 6.0, y: 100.0 + r as f32 * 40.0, pressure: 0.9, tilt: [0.0; 2] }).collect::<Vec<_>>());
+        draw(&mut e, &(0..30).map(|i| InputPoint { x: 450.0 + i as f32 * 6.0, y: 100.0 + r as f32 * 40.0, pressure: 0.9, tilt: [0.0; 2] }).collect::<Vec<_>>());
     }
     e.brush = BrushSettings { tool: Tool::Push, size: 30.0, strength: 0.9, softness: 0.4, bristle: 0.0, ..Default::default() };
     for k in 0..6 {
         let y = 100.0 + k as f32 * 16.0;
-        draw(&mut e, &(0..25).map(|i| InputPoint { x: 560.0 + i as f32 * 8.0, y: y - i as f32 * 3.0, pressure: 0.9 }).collect::<Vec<_>>());
+        draw(&mut e, &(0..25).map(|i| InputPoint { x: 560.0 + i as f32 * 8.0, y: y - i as f32 * 3.0, pressure: 0.9, tilt: [0.0; 2] }).collect::<Vec<_>>());
     }
-    draw(&mut e, &(0..25).map(|i| InputPoint { x: 500.0 + i as f32 * 8.0, y: 450.0, pressure: 0.9 }).collect::<Vec<_>>());
+    draw(&mut e, &(0..25).map(|i| InputPoint { x: 500.0 + i as f32 * 8.0, y: 450.0, pressure: 0.9, tilt: [0.0; 2] }).collect::<Vec<_>>());
     frame(&mut e);
     storage::export_png(e.canvas.as_mut().unwrap(), &out.join("push_wet.png")).unwrap();
     // Scrubbing back and forth fast over a fresh wash: many dabs per frame over the same spot.
     e.brush = BrushSettings { tool: Tool::Watercolor, size: 34.0, pigment: from_srgb([0.2, 0.3, 0.7]), water: 1.0, ..Default::default() };
     for r in 0..3 {
-        draw(&mut e, &(0..30).map(|i| InputPoint { x: 450.0 + i as f32 * 6.0, y: 140.0 + r as f32 * 20.0, pressure: 1.0 }).collect::<Vec<_>>());
+        draw(&mut e, &(0..30).map(|i| InputPoint { x: 450.0 + i as f32 * 6.0, y: 140.0 + r as f32 * 20.0, pressure: 1.0, tilt: [0.0; 2] }).collect::<Vec<_>>());
     }
     water_stats(&e, "push scrub before");
     e.brush = BrushSettings { tool: Tool::Push, size: 30.0, strength: 1.0, softness: 0.4, bristle: 0.0, ..Default::default() };
-    let scrub: Vec<InputPoint> = (0..120).map(|i| InputPoint { x: 450.0 + ((i as f32 * 0.9).sin() * 0.5 + 0.5) * 180.0, y: 150.0 + (i % 7) as f32 * 4.0, pressure: 1.0 }).collect();
+    let scrub: Vec<InputPoint> = (0..120).map(|i| InputPoint { x: 450.0 + ((i as f32 * 0.9).sin() * 0.5 + 0.5) * 180.0, y: 150.0 + (i % 7) as f32 * 4.0, pressure: 1.0, tilt: [0.0; 2] }).collect();
     e.stroke(0, &scrub[..1]);
     for c in scrub[1..].chunks(6) {
         e.stroke(1, c);
@@ -274,5 +274,18 @@ fn main() {
     dry(&mut e);
     storage::export_png(e.canvas.as_mut().unwrap(), &out.join("push.png")).unwrap();
     undo_to_blank(&mut e, "push");
+    // Tilt: the same stroke with the pen upright, at 45° and nearly flat,
+    // leaning across the stroke and then along it.
+    e.new_canvas(800, 500, 0, 7, 0);
+    e.brush = BrushSettings { tool: Tool::Watercolor, size: 16.0, pigment: from_srgb([0.2, 0.35, 0.7]), water: 0.6, ..Default::default() };
+    for (i, deg) in [0.0f32, 45.0, 70.0].into_iter().enumerate() {
+        let s = deg.to_radians().sin();
+        for (j, lean) in [[0.0, s], [s, 0.0]].into_iter().enumerate() {
+            let y = 80.0 + (i * 2 + j) as f32 * 65.0;
+            draw(&mut e, &(0..40).map(|k| InputPoint { x: 100.0 + k as f32 * 15.0, y, pressure: 0.7, tilt: lean }).collect::<Vec<_>>());
+        }
+    }
+    dry(&mut e);
+    storage::export_png(e.canvas.as_mut().unwrap(), &out.join("tilt_brush.png")).unwrap();
     println!("wrote {}", out.display());
 }

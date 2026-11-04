@@ -48,10 +48,12 @@ data class BrushParams(
     val pressureFlow: Float = 0.5f,
     val smoothing: Float = 0.3f,
     val splatter: Float = 0f,
+    /** How much a tilted pen widens the mark. */
+    val tilt: Float = 0.7f,
 ) {
     fun toArray(p: Pigment) = floatArrayOf(
         size, p.k[0], p.k[1], p.k[2], p.k[3], load, water, softness, bristle, bleed, strength,
-        pressureSize, pressureFlow, smoothing, splatter,
+        pressureSize, pressureFlow, smoothing, splatter, tilt,
     )
 }
 

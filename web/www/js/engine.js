@@ -137,6 +137,7 @@ export function brushParams(size, o = {}) {
     pressureFlow: 0.5,
     smoothing: 0.3,
     splatter: 0,
+    tilt: 0.7,
     ...o,
   };
 }
@@ -144,6 +145,6 @@ export function brushParams(size, o = {}) {
 export function brushArray(b, p) {
   return Float32Array.from([
     b.size, p[0], p[1], p[2], p[3], b.load, b.water, b.softness, b.bristle, b.bleed, b.strength,
-    b.pressureSize, b.pressureFlow, b.smoothing, b.splatter,
+    b.pressureSize, b.pressureFlow, b.smoothing, b.splatter, b.tilt,
   ]);
 }

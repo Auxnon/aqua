@@ -5,6 +5,7 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Matrix
 import android.hardware.display.DisplayManager
+import android.util.Log
 import android.view.MotionEvent
 import android.view.SurfaceHolder
 import android.view.SurfaceView
@@ -48,6 +49,8 @@ class CanvasSurfaceView(context: Context, private val engine: Long) : SurfaceVie
     /** The eyedropper reads the paint itself (a pale wash is a thinned paint) rather than its colour. */
     var pickWash = true
     var onTouchStart: () -> Unit = {}
+    /** A pen touched down with its eraser end (true) or its nib (false). */
+    var onPenEraser: (Boolean) -> Unit = {}
     /** True while a pinch is far enough out that letting go would leave for the gallery. */
     var onOverviewHint: (Boolean) -> Unit = {}
     var onOverview: (CanvasFrame) -> Unit = {}
@@ -296,22 +299,44 @@ class CanvasSurfaceView(context: Context, private val engine: Long) : SurfaceVie
         return p.coerceIn(0.02f, 1f)
     }
 
+    /** Points go to the engine as (x, y, pressure, tilt x, tilt y) in canvas space. */
     private fun sendPoints(e: MotionEvent, phase: Int) {
         val i = e.findPointerIndex(drawPointer)
         if (i < 0) return
         val n = if (phase == 1) e.historySize else 0
-        val out = FloatArray((n + 1) * 3)
-        for (h in 0 until n) {
-            val c = toCanvas(e.getHistoricalX(i, h), e.getHistoricalY(i, h))
-            out[h * 3] = c[0]
-            out[h * 3 + 1] = c[1]
-            out[h * 3 + 2] = pressure(e, i, h)
+        val out = FloatArray((n + 1) * 5)
+        for (h in 0..n) {
+            val c = if (h < n) toCanvas(e.getHistoricalX(i, h), e.getHistoricalY(i, h)) else toCanvas(e.getX(i), e.getY(i))
+            out[h * 5] = c[0]
+            out[h * 5 + 1] = c[1]
+            out[h * 5 + 2] = if (h < n) pressure(e, i, h) else pressure(e, i)
+            lean(e, i, if (h < n) h else -1)
+            out[h * 5 + 3] = tmp[0]
+            out[h * 5 + 4] = tmp[1]
         }
-        val c = toCanvas(e.getX(i), e.getY(i))
-        out[n * 3] = c[0]
-        out[n * 3 + 1] = c[1]
-        out[n * 3 + 2] = pressure(e, i)
         Native.stroke(engine, phase, out)
+    }
+
+    /**
+     * Which way the pen leans, turned into canvas space, with length the sine of
+     * its tilt from upright; zero for fingers and pens that don't report tilt.
+     * Left in [tmp].
+     */
+    private fun lean(e: MotionEvent, i: Int, h: Int) {
+        tmp[0] = 0f
+        tmp[1] = 0f
+        if (e.getToolType(i) == MotionEvent.TOOL_TYPE_FINGER) return
+        val tilt = if (h < 0) e.getAxisValue(MotionEvent.AXIS_TILT, i) else e.getHistoricalAxisValue(MotionEvent.AXIS_TILT, i, h)
+        if (tilt <= 0f) return
+        // Orientation 0 points up the screen, positive clockwise.
+        val o = if (h < 0) e.getOrientation(i) else e.getHistoricalOrientation(i, h)
+        tmp[0] = sin(o)
+        tmp[1] = -cos(o)
+        inverse.mapVectors(tmp)
+        val len = hypot(tmp[0], tmp[1]).coerceAtLeast(1e-6f)
+        val s = sin(tilt.coerceIn(0f, 1.5708f))
+        tmp[0] *= s / len
+        tmp[1] *= s / len
     }
 
     private fun sample(x: Float, y: Float) {
@@ -389,7 +414,11 @@ class CanvasSurfaceView(context: Context, private val engine: Long) : SurfaceVie
                 swipeTime = -1L
                 val tool = e.getToolType(0)
                 val isStylus = tool == MotionEvent.TOOL_TYPE_STYLUS || tool == MotionEvent.TOOL_TYPE_ERASER
-                if (isStylus) stylusSeen = true
+                if (isStylus) {
+                    stylusSeen = true
+                    // What the pen reports, for working out third-party pens' eraser ends.
+                    Log.d("AquaPen", "down tool=$tool buttons=${e.buttonState} tilt=${e.getAxisValue(MotionEvent.AXIS_TILT)} orientation=${e.orientation} pressure=${e.pressure}")
+                }
                 downTime = e.eventTime
                 maxPointers = 1
                 moved = false
@@ -400,11 +429,14 @@ class CanvasSurfaceView(context: Context, private val engine: Long) : SurfaceVie
                         mode = Mode.Gesture
                         beginGesture(e)
                     }
-                    eyedropper -> {
+                    eyedropper && tool != MotionEvent.TOOL_TYPE_ERASER -> {
                         mode = Mode.Eyedrop
                         sample(e.x, e.y)
                     }
                     else -> {
+                        // The far end of an EMR pen is an eraser: switch to it for as
+                        // long as the pen is turned round, before the stroke starts.
+                        if (isStylus) onPenEraser(tool == MotionEvent.TOOL_TYPE_ERASER)
                         mode = Mode.Drawing
                         drawPointer = e.getPointerId(0)
                         drawWithStylus = isStylus

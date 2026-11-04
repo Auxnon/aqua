@@ -350,11 +350,11 @@ pub extern "system" fn Java_app_aqua_engine_Native_setBrush(mut env: JNIEnv, _c:
     }
 }
 
-/// phase: 0 begin, 1 move, 2 end, 3 cancel. pts: x, y, pressure triples in canvas pixels.
+/// phase: 0 begin, 1 move, 2 end, 3 cancel. pts: (x, y, pressure, tilt x, tilt y) in canvas pixels.
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_app_aqua_engine_Native_stroke(mut env: JNIEnv, _c: JClass, h: jlong, phase: jint, pts: JFloatArray) {
     let v = floats(&mut env, &pts);
-    let p: Vec<InputPoint> = v.as_chunks::<3>().0.iter().map(|c| InputPoint { x: c[0], y: c[1], pressure: c[2] }).collect();
+    let p = InputPoint::parse(&v);
     if !p.is_empty() || phase >= 2 {
         send(h, Cmd::Stroke(phase, p));
     }

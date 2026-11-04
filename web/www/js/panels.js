@@ -29,19 +29,19 @@ export function brushPanel(tool, params, onChange) {
   const rows = {
     [Tool.Watercolor]: () => [
       s('Water', 'water'), s('Pigment', 'load'), s('Edge softness', 'softness', soft), s('Bristles', 'bristle'),
-      s('Pressure → size', 'pressureSize'), s('Pressure → flow', 'pressureFlow'), s('Smoothing', 'smoothing'),
+      s('Pressure → size', 'pressureSize'), s('Pen tilt → width', 'tilt'), s('Pressure → flow', 'pressureFlow'), s('Smoothing', 'smoothing'),
     ],
-    [Tool.Water]: () => [s('Water', 'water'), s('Edge softness', 'softness', soft), s('Pressure → size', 'pressureSize'), s('Smoothing', 'smoothing')],
+    [Tool.Water]: () => [s('Water', 'water'), s('Edge softness', 'softness', soft), s('Pressure → size', 'pressureSize'), s('Pen tilt → width', 'tilt'), s('Smoothing', 'smoothing')],
     [Tool.Ink]: () => [
       s('Pen  ←  bleed  →  India ink', 'bleed', { format: (v) => (v < 0.02 ? 'pen' : pct(v)) }),
       s('Density', 'load'),
       s('Splatter (quick flicks)', 'splatter', { format: (v) => (v < 0.02 ? 'off' : pct(v)) }),
-      s('Pressure → size', 'pressureSize'),
+      s('Pressure → size', 'pressureSize'), s('Pen tilt → width', 'tilt'),
       s('Smoothing', 'smoothing'),
     ],
-    [Tool.Eraser]: () => [s('Strength', 'strength'), s('Edge softness', 'softness', soft), s('Pressure → size', 'pressureSize')],
+    [Tool.Eraser]: () => [s('Strength', 'strength'), s('Edge softness', 'softness', soft), s('Pressure → size', 'pressureSize'), s('Pen tilt → width', 'tilt')],
     [Tool.Push]: () => [
-      s('Strength', 'strength'), s('Edge softness', 'softness', soft), s('Pressure → size', 'pressureSize'), s('Smoothing', 'smoothing'),
+      s('Strength', 'strength'), s('Edge softness', 'softness', soft), s('Pressure → size', 'pressureSize'), s('Pen tilt → width', 'tilt'), s('Smoothing', 'smoothing'),
       h('p', { class: 'caption' }, 'Pushes standing water and the paint in it. Does nothing on dry paper.'),
     ],
   };

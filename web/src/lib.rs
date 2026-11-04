@@ -68,9 +68,9 @@ impl AquaEngine {
         }
     }
 
-    /// phase: 0 begin, 1 move, 2 end, 3 cancel; points are (x, y, pressure) in canvas pixels.
+    /// phase: 0 begin, 1 move, 2 end, 3 cancel; points are (x, y, pressure, tilt x, tilt y) in canvas pixels.
     pub fn stroke(&self, phase: i32, pts: &[f32]) {
-        let p: Vec<InputPoint> = pts.as_chunks::<3>().0.iter().map(|c| InputPoint { x: c[0], y: c[1], pressure: c[2] }).collect();
+        let p = InputPoint::parse(pts);
         self.engine.borrow_mut().stroke(phase, &p);
     }
 

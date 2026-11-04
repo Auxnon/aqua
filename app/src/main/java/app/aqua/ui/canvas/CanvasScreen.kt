@@ -104,7 +104,7 @@ fun CanvasScreen(dir: File, onExit: (Arrival?) -> Unit) {
         mutableStateMapOf(
             Tool.Watercolor to BrushParams(size = 28f),
             Tool.Water to BrushParams(size = 40f, water = 0.8f, softness = 0.3f),
-            Tool.Ink to BrushParams(size = 3f, load = 0.8f, softness = 0.05f, bristle = 0f, pressureSize = 0.8f, smoothing = 0.5f, splatter = 0.35f),
+            Tool.Ink to BrushParams(size = 3f, load = 0.8f, softness = 0.05f, bristle = 0f, pressureSize = 0.8f, smoothing = 0.5f, splatter = 0.35f, tilt = 0.25f),
             Tool.Eraser to BrushParams(size = 40f, softness = 0.4f, bristle = 0f),
             Tool.Push to BrushParams(size = 36f, softness = 0.4f, bristle = 0f),
         )
@@ -163,9 +163,14 @@ fun CanvasScreen(dir: File, onExit: (Arrival?) -> Unit) {
 
     val bp = params[brushTool]!!
     val color = if (brushTool == Tool.Ink) ink else paint
-    LaunchedEffect(brushTool, bp, color) {
-        Native.setBrush(engine, brushTool.id, bp.toArray(color))
+    // True while a pen is turned round to its eraser end.
+    var penEraser by remember { mutableStateOf(false) }
+    fun strokeTool() = if (penEraser) Tool.Eraser else brushTool
+    fun applyBrush() {
+        val t = strokeTool()
+        Native.setBrush(engine, t.id, params[t]!!.toArray(if (brushTool == Tool.Ink) ink else paint))
     }
+    LaunchedEffect(brushTool, bp, color, penEraser) { applyBrush() }
 
     fun selectTool(t: Tool) {
         if (t == tool) {
@@ -247,6 +252,13 @@ fun CanvasScreen(dir: File, onExit: (Arrival?) -> Unit) {
                 v.pickWash = pickKind == PickKind.Wash
                 v.onSample = { setColor(it) }
                 v.onTouchStart = { panel = Panel.None }
+                v.onPenEraser = { on ->
+                    if (on != penEraser) {
+                        penEraser = on
+                        // Now, so the stroke that is starting already uses it.
+                        applyBrush()
+                    }
+                }
                 v.setCanvasSize(info.width, info.height, info.home)
             },
         )
@@ -324,7 +336,7 @@ fun CanvasScreen(dir: File, onExit: (Arrival?) -> Unit) {
                 RoundButton(Icons.Outlined.Brush, "Watercolour", selected = tool == Tool.Watercolor, size = 48.dp) { selectTool(Tool.Watercolor) }
                 RoundButton(Icons.Outlined.WaterDrop, "Clear water", selected = tool == Tool.Water, size = 48.dp) { selectTool(Tool.Water) }
                 RoundButton(Icons.Outlined.HistoryEdu, "Ink", selected = tool == Tool.Ink, size = 48.dp) { selectTool(Tool.Ink) }
-                RoundButton(EraserIcon, "Eraser", selected = tool == Tool.Eraser, size = 48.dp) { selectTool(Tool.Eraser) }
+                RoundButton(EraserIcon, "Eraser", selected = tool == Tool.Eraser || penEraser, size = 48.dp) { selectTool(Tool.Eraser) }
                 RoundButton(PushIcon, "Push", selected = tool == Tool.Push, size = 48.dp) { selectTool(Tool.Push) }
                 RoundButton(if (pickKind == PickKind.Wash) WashPickIcon else Icons.Outlined.Colorize, "Eyedropper", selected = tool == Tool.Eyedropper, size = 48.dp) { selectTool(Tool.Eyedropper) }
             }

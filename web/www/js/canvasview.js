@@ -254,15 +254,42 @@ export class CanvasView {
     return 0.8;
   }
 
+  /**
+   * Which way the pen leans, turned into canvas space, with length the sine of
+   * its tilt from upright; zero for fingers, mice and pens without tilt.
+   */
+  lean(e, at) {
+    if (e.pointerType !== 'pen') return [0, 0];
+    let az;
+    let lean;
+    if (typeof e.altitudeAngle === 'number' && typeof e.azimuthAngle === 'number' && (e.tiltX || e.tiltY || e.altitudeAngle !== Math.PI / 2)) {
+      az = e.azimuthAngle;
+      lean = Math.cos(e.altitudeAngle);
+    } else {
+      const tx = Math.tan(((e.tiltX || 0) * Math.PI) / 180);
+      const ty = Math.tan(((e.tiltY || 0) * Math.PI) / 180);
+      const t = Math.hypot(tx, ty);
+      if (t < 1e-4) return [0, 0];
+      az = Math.atan2(ty, tx);
+      lean = t / Math.sqrt(1 + t * t);
+    }
+    if (lean < 1e-3) return [0, 0];
+    const [bx, by] = this.toCanvas(at[0] + Math.cos(az), at[1] + Math.sin(az));
+    const [ax, ay] = this.toCanvas(at[0], at[1]);
+    const len = Math.hypot(bx - ax, by - ay) || 1;
+    return [((bx - ax) / len) * lean, ((by - ay) / len) * lean];
+  }
+
+  /** Points go to the engine as (x, y, pressure, tilt x, tilt y) in canvas space. */
   sendPoints(e, phase) {
     const evs = phase === 1 && e.getCoalescedEvents ? e.getCoalescedEvents() : [];
     const list = evs.length ? evs : [e];
-    const out = new Float32Array(list.length * 3);
+    const out = new Float32Array(list.length * 5);
     list.forEach((ev, i) => {
-      const [x, y] = this.toCanvas(...this.pos(ev));
-      out[i * 3] = x;
-      out[i * 3 + 1] = y;
-      out[i * 3 + 2] = this.pressure(ev);
+      const at = this.pos(ev);
+      const [x, y] = this.toCanvas(...at);
+      const [tx, ty] = this.lean(ev, at);
+      out.set([x, y, this.pressure(ev), tx, ty], i * 5);
     });
     this.engine.stroke(phase, out);
   }
@@ -345,10 +372,13 @@ export class CanvasView {
       if (navButton || (e.pointerType === 'touch' && this.penSeen)) {
         this.mode = 'gesture';
         this.beginGesture(e.timeStamp);
-      } else if (this.eyedropper) {
+      } else if (this.eyedropper && !(isPen && e.buttons & 32)) {
         this.mode = 'eyedrop';
         this.sample(e);
       } else {
+        // The far end of a pen is an eraser (buttons bit 32): switch to it for
+        // as long as the pen is turned round, before the stroke starts.
+        if (isPen) this.cb.onPenEraser?.(!!(e.buttons & 32));
         this.mode = 'drawing';
         this.drawPointer = e.pointerId;
         this.drawWithPen = isPen;

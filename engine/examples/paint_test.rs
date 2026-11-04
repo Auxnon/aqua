@@ -10,7 +10,7 @@ use aqua_engine::pigment::from_srgb;
 use aqua_engine::storage;
 
 fn stroke(e: &mut Engine, pts: &[(f32, f32)], pressure: f32) {
-    let ip: Vec<InputPoint> = pts.iter().map(|&(x, y)| InputPoint { x, y, pressure }).collect();
+    let ip: Vec<InputPoint> = pts.iter().map(|&(x, y)| InputPoint { x, y, pressure, tilt: [0.0; 2] }).collect();
     // Feed the samples a few at a time, like touch events arriving per frame.
     for (i, chunk) in ip.chunks(3).enumerate() {
         let phase = if i == 0 { 0 } else { 1 };

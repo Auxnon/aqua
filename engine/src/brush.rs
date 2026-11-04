@@ -46,6 +46,9 @@ pub struct BrushSettings {
     pub strength: f32,
     /// Ink only: droplets thrown off by quick pressure flicks, like a quill.
     pub splatter: f32,
+    /// How much a tilted pen widens the mark: the side of the brush lies down
+    /// on the paper. 0 ignores tilt.
+    pub tilt: f32,
     pub pressure_size: f32,
     pub pressure_flow: f32,
     pub smoothing: f32,
@@ -64,6 +67,7 @@ impl Default for BrushSettings {
             bleed: 0.0,
             strength: 0.8,
             splatter: 0.0,
+            tilt: 0.7,
             pressure_size: 0.6,
             pressure_flow: 0.5,
             smoothing: 0.3,
@@ -74,7 +78,7 @@ impl Default for BrushSettings {
 impl BrushSettings {
     /// From the flat parameter list the apps send: size, pigment (4), load,
     /// water, softness, bristle, bleed, strength, pressure size, pressure flow,
-    /// smoothing, splatter.
+    /// smoothing, splatter, tilt (optional).
     pub fn from_params(tool: u32, p: &[f32]) -> Option<Self> {
         if p.len() < 15 {
             return None;
@@ -93,6 +97,7 @@ impl BrushSettings {
             pressure_flow: p[12],
             smoothing: p[13],
             splatter: p[14],
+            tilt: p.get(15).copied().unwrap_or(0.7),
         })
     }
 }
@@ -109,11 +114,14 @@ pub struct Dab {
     pub ink: [f32; 4],
     /// softness, bristle, seed, strength
     pub shape: [f32; 4],
+    /// The pen's lean (unit direction x, y) and how far the dab is stretched
+    /// along it (1 = round).
+    pub lean: [f32; 4],
 }
 
 impl Dab {
     pub fn bounds(&self) -> crate::gpu::IRect {
-        let r = self.pos_radius[2] * 1.15 * std::f32::consts::SQRT_2 + 2.0;
+        let r = self.pos_radius[2] * self.lean[2].max(1.0) * 1.15 * std::f32::consts::SQRT_2 + 2.0;
         let (x, y) = (self.pos_radius[0], self.pos_radius[1]);
         crate::gpu::IRect::new((x - r).floor() as i32, (y - r).floor() as i32, (x + r).ceil() as i32 + 1, (y + r).ceil() as i32 + 1)
     }
@@ -133,11 +141,27 @@ pub enum DabKind {
     Push,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Default)]
 pub struct InputPoint {
     pub x: f32,
     pub y: f32,
     pub pressure: f32,
+    /// Which way the pen leans, in canvas space, with length the sine of its
+    /// tilt from upright (0 = straight up, 1 = lying flat).
+    pub tilt: [f32; 2],
+}
+
+impl InputPoint {
+    /// Interpolates between two samples.
+    fn lerp(a: InputPoint, b: InputPoint, t: f32) -> InputPoint {
+        let m = |x: f32, y: f32| x + (y - x) * t;
+        InputPoint { x: m(a.x, b.x), y: m(a.y, b.y), pressure: m(a.pressure, b.pressure), tilt: [m(a.tilt[0], b.tilt[0]), m(a.tilt[1], b.tilt[1])] }
+    }
+
+    /// Reads the flat point list the apps send: x, y, pressure, tilt x, tilt y.
+    pub fn parse(v: &[f32]) -> Vec<InputPoint> {
+        v.as_chunks::<5>().0.iter().map(|c| InputPoint { x: c[0], y: c[1], pressure: c[2], tilt: [c[3], c[4]] }).collect()
+    }
 }
 
 /// How long the brush must rest before it starts soaking paint into the paper.
@@ -169,7 +193,7 @@ pub struct Stroke {
 
 impl Stroke {
     pub fn new(settings: BrushSettings, seed: u32) -> Self {
-        let p = InputPoint { x: 0.0, y: 0.0, pressure: 0.0 };
+        let p = InputPoint::default();
         Self {
             settings,
             seed: (seed % 997) as f32 * 0.61803,
@@ -217,9 +241,8 @@ impl Stroke {
         // Streamline smoothing: the brush trails the pen a little.
         let k = 1.0 - self.settings.smoothing.clamp(0.0, 0.95) * 0.85;
         let target = InputPoint {
-            x: self.smoothed.x + (p.x - self.smoothed.x) * k,
-            y: self.smoothed.y + (p.y - self.smoothed.y) * k,
             pressure: self.smoothed.pressure + (p.pressure - self.smoothed.pressure) * k.max(0.5),
+            ..InputPoint::lerp(self.smoothed, p, k)
         };
         self.smoothed = target;
         self.walk_to(target, out);
@@ -388,6 +411,7 @@ impl Stroke {
             ink: [0.0; 4],
             // The same crisp edge as the ink stroke.
             shape: [(1.2 / radius).clamp(0.02, 0.5) + bleed.clamp(0.0, 1.0) * 0.15, 0.0, self.seed, 0.0],
+            lean: [1.0, 0.0, 1.0, 0.0],
         };
         push_ink(dab, ink, bleed, water, out);
     }
@@ -416,16 +440,25 @@ impl Stroke {
             travelled += step;
             self.carry = 0.0;
             let t = travelled / dist;
-            let pt = InputPoint {
-                x: self.last.x + dx * t,
-                y: self.last.y + dy * t,
-                pressure: self.last.pressure + (target.pressure - self.last.pressure) * t,
-            };
+            let pt = InputPoint::lerp(self.last, target, t);
             self.emit(pt, step, out);
             self.still = 0.0;
             self.dwell = 0.0;
         }
         self.last = target;
+    }
+
+    /// A tilted pen lays the side of the brush down: the dab stretches along
+    /// the way the pen leans, up to about two and a half times at a steep angle.
+    fn lean(&self, p: InputPoint) -> [f32; 4] {
+        let amount = self.settings.tilt.clamp(0.0, 1.0);
+        let len = (p.tilt[0] * p.tilt[0] + p.tilt[1] * p.tilt[1]).sqrt().min(1.0);
+        if amount <= 0.0 || len < 1e-3 {
+            return [1.0, 0.0, 1.0, 0.0];
+        }
+        // Nearly upright does nothing; the stretch comes on as the pen lies down.
+        let k = ((len - 0.25) / 0.75).clamp(0.0, 1.0);
+        [p.tilt[0] / len, p.tilt[1] / len, 1.0 + 1.5 * amount * k * k, 0.0]
     }
 
     fn radius(&self, pressure: f32) -> f32 {
@@ -462,6 +495,7 @@ impl Stroke {
             pigment: [0.0; 4],
             ink: [0.0; 4],
             shape: [s.softness.clamp(0.02, 1.0), s.bristle, self.seed, s.strength],
+            lean: self.lean(p),
         };
         match s.tool {
             Tool::Watercolor => {

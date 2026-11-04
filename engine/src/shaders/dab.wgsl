@@ -23,6 +23,8 @@ struct DabIn {
     @location(2) pigment: vec4<f32>,
     @location(3) ink: vec4<f32>,
     @location(4) shape: vec4<f32>,
+    // The pen's lean: unit direction and how far the dab stretches along it.
+    @location(5) lean: vec4<f32>,
 }
 
 struct VOut {
@@ -45,7 +47,11 @@ fn vs_main(@builtin(vertex_index) vi: u32, d: DabIn) -> VOut {
     let c = corners[vi] * MARGIN;
     let ang = d.pos_radius.w;
     let rot = mat2x2<f32>(cos(ang), sin(ang), -sin(ang), cos(ang));
-    let world = d.pos_radius.xy + rot * (c * d.pos_radius.z);
+    var off = rot * (c * d.pos_radius.z);
+    // A tilted pen: stretch the dab along the way it leans. The quad stretches,
+    // so the round footprint drawn in it becomes an ellipse.
+    off += (d.lean.z - 1.0) * dot(off, d.lean.xy) * d.lean.xy;
+    let world = d.pos_radius.xy + off;
     var o: VOut;
     o.clip = vec4<f32>(world.x / G.canvas.x * 2.0 - 1.0, 1.0 - world.y / G.canvas.y * 2.0, 0.0, 1.0);
     o.local = c;
