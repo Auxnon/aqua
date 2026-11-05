@@ -297,10 +297,10 @@ fn main() {
         draw(&mut e, &(0..30).map(|i| InputPoint { x: 560.0 + k as f32 * 40.0, y: 60.0 + i as f32 * 20.0, pressure: 0.8, tilt: [0.0; 2] }).collect::<Vec<_>>());
     }
     e.brush = BrushSettings { pigment: from_srgb([0.15, 0.25, 0.65]), water: 0.6, ..e.brush };
-    e.set_charge(1.0);
+    e.set_charge(0, 1.0);
     for row in 0..7 {
         if row == 6 {
-            e.set_charge(1.0);
+            e.set_charge(0, 1.0);
         }
         let y = 70.0 + row as f32 * 100.0;
         draw(&mut e, &(0..55).map(|i| InputPoint { x: 60.0 + i as f32 * 14.0, y, pressure: 0.8, tilt: [0.0; 2] }).collect::<Vec<_>>());
@@ -308,5 +308,22 @@ fn main() {
     }
     dry(&mut e);
     storage::export_png(e.canvas.as_mut().unwrap(), &out.join("dip.png")).unwrap();
+
+    // Paper colour: the same marks on black, then the paper turned to a blue-grey.
+    for (name, paper) in [("paper_black", None), ("paper_blue", Some([0.45, 0.55, 0.65]))] {
+        e.new_canvas(700, 400, 0, 7, 0);
+        let c = e.canvas.as_mut().unwrap();
+        c.paper_spec.color = aqua_engine::canvas::PaperSpec::black();
+        c.invalidate();
+        if let Some(p) = paper {
+            e.set_paper_color(p);
+        }
+        e.brush = BrushSettings { tool: Tool::Watercolor, size: 30.0, pigment: from_srgb([0.85, 0.3, 0.2]), water: 0.7, ..Default::default() };
+        draw(&mut e, &(0..40).map(|i| InputPoint { x: 60.0 + i as f32 * 15.0, y: 120.0, pressure: 0.8, tilt: [0.0; 2] }).collect::<Vec<_>>());
+        e.brush = BrushSettings { tool: Tool::Ink, size: 4.0, pigment: from_srgb([0.95, 0.95, 0.9]), load: 0.9, ..Default::default() };
+        draw(&mut e, &(0..60).map(|i| InputPoint { x: 60.0 + i as f32 * 10.0, y: 260.0 + (i as f32 * 0.3).sin() * 30.0, pressure: 0.8, tilt: [0.0; 2] }).collect::<Vec<_>>());
+        dry(&mut e);
+        storage::export_png(e.canvas.as_mut().unwrap(), &out.join(format!("{name}.png"))).unwrap();
+    }
     println!("wrote {}", out.display());
 }

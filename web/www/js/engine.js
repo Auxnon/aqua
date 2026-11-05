@@ -4,6 +4,10 @@
 
 import init, { AquaEngine, AquaPalette, pigment_from_rgb, pigment_to_rgb, preset_pigments } from '../pkg/aqua_web.js';
 
+/** The usual warm white paper and black paper, as sRGB (`PaperSpec::white` and `black` in the engine). */
+export const PAPER_WHITE = [0.968, 0.961, 0.937];
+export const PAPER_BLACK = [0.11, 0.106, 0.102];
+
 export { AquaPalette };
 
 export async function loadWasm() {
@@ -54,8 +58,10 @@ export class Engine {
   setView(v) { this.raw.set_view(v); this.kick(); }
   setTilt(x, y) { this.raw.set_tilt(x, y); this.kick(); }
   setBrush(tool, params) { this.raw.set_brush(tool, params); }
-  /** Negative: brushes are always wet. Otherwise the brush now holds this much water (1 = just dipped). */
-  setCharge(v) { this.raw.set_charge(v); }
+  /** Negative: brushes are always wet. Otherwise `tool`'s brush holds this much water, or ink for the pen (1 = just dipped). */
+  setCharge(tool, v) { this.raw.set_charge(tool, v); this.kick(); }
+  /** Recolours the paper (sRGB, 0..1). */
+  setPaperColor([r, g, b]) { this.raw.set_paper_color(r, g, b); this.kick(); }
   stroke(phase, pts) { this.raw.stroke(phase, pts); this.kick(); }
   newCanvas(w, h, paper, seed, home) { this.raw.new_canvas(w, h, paper, seed, home); this.kick(); }
   load(files) { this.raw.load(files); this.kick(); }

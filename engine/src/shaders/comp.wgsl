@@ -10,6 +10,8 @@ struct LayerU {
     wet: u32,
     first: u32,
     _pad: f32,
+    // The bare paper's colour.
+    paper: vec4<f32>,
 }
 
 @group(0) @binding(0) var<uniform> L: LayerU;
@@ -91,8 +93,10 @@ fn paper_init(@builtin(workgroup_id) wg: vec3<u32>, @builtin(local_invocation_id
     let hy = textureLoad(paper, min(p + vec2<i32>(0, 1), dims - 1), 0).r;
     // Raking light from the upper left.
     let shade = 1.0 + 0.9 * ((h - hx) + (h - hy)) + 0.05 * (h - 0.5);
-    let base = vec3<f32>(0.93, 0.915, 0.87);
-    textureStore(out_tex, p, vec4<f32>(clamp(base * shade, vec3<f32>(0.0), vec3<f32>(1.0)), 1.0));
+    let base = L.paper.rgb;
+    // The added term keeps the grain visible on dark paper.
+    let lit = base * shade + 0.03 * (shade - 1.0);
+    textureStore(out_tex, p, vec4<f32>(clamp(lit, vec3<f32>(0.0), vec3<f32>(1.0)), 1.0));
 }
 
 @compute @workgroup_size(8, 8)

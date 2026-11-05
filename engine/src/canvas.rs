@@ -74,6 +74,8 @@ struct LayerU {
     wet: u32,
     first: u32,
     _pad: f32,
+    /// The bare paper's colour (linear reflectance, rgb).
+    paper: [f32; 4],
 }
 
 #[repr(C)]
@@ -155,15 +157,29 @@ pub struct PaperSpec {
     pub grain: f32,
     pub fibre: f32,
     pub sizing: f32,
+    /// The paper's colour as linear reflectance. Paintings from before paper
+    /// colours were added are the usual warm white.
+    #[serde(default = "PaperSpec::white")]
+    pub color: [f32; 3],
 }
 
 impl PaperSpec {
+    /// The usual warm white watercolour paper.
+    pub fn white() -> [f32; 3] {
+        [0.93, 0.915, 0.87]
+    }
+
+    /// Black paper (a little lifted, so the grain still shows).
+    pub fn black() -> [f32; 3] {
+        [0.012, 0.0115, 0.011]
+    }
+
     /// 0 = cold press, 1 = hot press, 2 = rough
     pub fn preset(kind: u32, seed: u32) -> Self {
         match kind {
-            1 => Self { seed, roughness: 0.15, grain: 3.0, fibre: 0.35, sizing: 0.2 },
-            2 => Self { seed, roughness: 0.9, grain: 7.0, fibre: 0.6, sizing: 0.45 },
-            _ => Self { seed, roughness: 0.5, grain: 4.5, fibre: 0.5, sizing: 0.3 },
+            1 => Self { seed, roughness: 0.15, grain: 3.0, fibre: 0.35, sizing: 0.2, color: Self::white() },
+            2 => Self { seed, roughness: 0.9, grain: 7.0, fibre: 0.6, sizing: 0.45, color: Self::white() },
+            _ => Self { seed, roughness: 0.5, grain: 4.5, fibre: 0.5, sizing: 0.3, color: Self::white() },
         }
     }
 }
@@ -1434,6 +1450,7 @@ impl Canvas {
             wet: l.map_or(0, |l| l.wet.is_some() as u32),
             first: first as u32,
             _pad: 0.0,
+            paper: [self.paper_spec.color[0], self.paper_spec.color[1], self.paper_spec.color[2], 1.0],
         }
     }
 
@@ -1516,6 +1533,18 @@ impl Canvas {
     }
 
     /// Recomposites everything on the next update (after loading, resizing, ...).
+    /// Recolours the bare paper under every layer (sRGB, 0..1).
+    pub fn set_paper_color(&mut self, srgb: [f32; 3]) {
+        self.paper_spec.color = srgb.map(|c| crate::pigment::srgb_to_linear(c).clamp(0.0, 0.98));
+        self.invalidate();
+        self.revision += 1;
+    }
+
+    /// The bare paper's colour as sRGB.
+    pub fn paper_color(&self) -> [f32; 3] {
+        self.paper_spec.color.map(crate::pigment::linear_to_srgb)
+    }
+
     pub fn invalidate(&mut self) {
         self.structure_dirty = true;
     }

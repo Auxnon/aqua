@@ -66,6 +66,8 @@ import androidx.compose.ui.unit.sp
 import app.aqua.AquaApp
 import app.aqua.data.Artwork
 import app.aqua.engine.Native
+import app.aqua.engine.PAPER_BLACK
+import app.aqua.engine.setPaper
 import app.aqua.ui.Arrival
 import app.aqua.ui.rememberDisplayRotation
 import app.aqua.ui.screenTurn
@@ -194,13 +196,14 @@ fun GalleryScreen(onOpen: (File) -> Unit, arrival: Arrival? = null, onArrived: (
     if (creating) {
         NewCanvasDialog(
             onDismiss = { creating = false },
-            onCreate = { w, h, paper ->
+            onCreate = { w, h, paper, black ->
                 creating = false
                 busy = true
                 scope.launch(Dispatchers.IO) {
                     val dir = app.repo.newDir()
                     // The painting is kept the way up it is now, whichever way the phone turns later.
                     Native.newCanvas(app.engine, w, h, paper, Random.nextInt(1, Int.MAX_VALUE), rotation)
+                    if (black) setPaper(app.engine, PAPER_BLACK)
                     Native.save(app.engine, dir.path)
                     withContext(Dispatchers.Main) {
                         busy = false
@@ -292,7 +295,7 @@ private fun SettingsDialog(store: Settings, onDismiss: () -> Unit) {
 private data class SizePreset(val label: String, val w: Int, val h: Int)
 
 @Composable
-private fun NewCanvasDialog(onDismiss: () -> Unit, onCreate: (Int, Int, Int) -> Unit) {
+private fun NewCanvasDialog(onDismiss: () -> Unit, onCreate: (Int, Int, Int, Boolean) -> Unit) {
     val window = LocalWindowInfo.current.containerSize
     val screen = remember(window) {
         // Screen-shaped canvas, longest side capped to keep the wet simulation light.
@@ -309,6 +312,7 @@ private fun NewCanvasDialog(onDismiss: () -> Unit, onCreate: (Int, Int, Int) -> 
     val papers = listOf("Cold press", "Hot press", "Rough")
     var size by remember { mutableStateOf(presets[0]) }
     var paper by remember { mutableStateOf(0) }
+    var black by remember { mutableStateOf(false) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("New painting") },
@@ -325,9 +329,17 @@ private fun NewCanvasDialog(onDismiss: () -> Unit, onCreate: (Int, Int, Int) -> 
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     papers.forEachIndexed { i, name -> Choice(name, i == paper) { paper = i } }
                 }
+                Spacer(Modifier.height(12.dp))
+                Text("Colour", color = AquaColors.TextDim, fontSize = 12.sp)
+                Spacer(Modifier.height(6.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Choice("White", !black) { black = false }
+                    Choice("Black", black) { black = true }
+                }
+                Text("Change it any time from the paper under the layers.", color = AquaColors.TextDim, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp))
             }
         },
-        confirmButton = { TextButton(onClick = { onCreate(size.w, size.h, paper) }) { Text("Create") } },
+        confirmButton = { TextButton(onClick = { onCreate(size.w, size.h, paper, black) }) { Text("Create") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
 }

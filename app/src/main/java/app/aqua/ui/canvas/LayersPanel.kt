@@ -29,16 +29,19 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.aqua.engine.CanvasInfo
 import app.aqua.engine.LayerOp
 import app.aqua.engine.Native
+import app.aqua.engine.setPaper
 import app.aqua.ui.theme.AquaColors
 import kotlin.math.ln
 import kotlin.math.pow
@@ -50,6 +53,8 @@ fun LayersPanel(engine: Long, info: CanvasInfo, onChanged: () -> Unit, modifier:
         onChanged()
     }
     val n = info.layers.size
+    // The paper is shown as the bottom of the stack; selecting it edits its colour.
+    var paperOpen by remember { mutableStateOf(false) }
     FloatingPanel(modifier.width(300.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             PanelTitle("Layers", Modifier.weight(1f))
@@ -59,14 +64,14 @@ fun LayersPanel(engine: Long, info: CanvasInfo, onChanged: () -> Unit, modifier:
             // Top of the stack first, like every painting app.
             itemsIndexed(info.layers.asReversed(), key = { _, l -> l.id }) { ri, layer ->
                 val index = n - 1 - ri
-                val active = index == info.active
+                val active = index == info.active && !paperOpen
                 Row(
                     Modifier
                         .fillMaxWidth()
                         .padding(vertical = 2.dp)
                         .clip(RoundedCornerShape(10.dp))
                         .background(if (active) AquaColors.Accent.copy(alpha = 0.16f) else AquaColors.Raised.copy(alpha = 0.5f))
-                        .clickable { op(LayerOp.SELECT, index) }
+                        .clickable { paperOpen = false; op(LayerOp.SELECT, index) }
                         .padding(horizontal = 10.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -90,6 +95,27 @@ fun LayersPanel(engine: Long, info: CanvasInfo, onChanged: () -> Unit, modifier:
                     )
                 }
             }
+            item(key = "paper") {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 2.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(if (paperOpen) AquaColors.Accent.copy(alpha = 0.16f) else AquaColors.Raised.copy(alpha = 0.25f))
+                        .clickable { paperOpen = !paperOpen }
+                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("Paper", color = AquaColors.TextDim, fontSize = 14.sp, modifier = Modifier.weight(1f))
+                    Swatch(Color(info.paper), size = 20.dp) { paperOpen = !paperOpen }
+                }
+            }
+        }
+        if (paperOpen) {
+            HorizontalDivider(color = AquaColors.Line)
+            Spacer(Modifier.size(8.dp))
+            PaperColorEditor(info.paper) { setPaper(engine, it); onChanged() }
+            return@FloatingPanel
         }
         val layer = info.layers.getOrNull(info.active) ?: return@FloatingPanel
         HorizontalDivider(color = AquaColors.Line)

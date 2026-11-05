@@ -20,6 +20,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.graphics.SolidColor
@@ -37,9 +38,10 @@ import kotlinx.coroutines.launch
 /**
  * The water cup, seen from above. Touching it dips the brush, filling it with
  * water again; the ring round the rim shows how much the brush still holds.
+ * Given an [ink] colour it is an ink well instead, for the pen.
  */
 @Composable
-fun WaterCup(charge: Float, onDip: () -> Unit, modifier: Modifier = Modifier, size: Dp = 60.dp) {
+fun WaterCup(charge: Float, onDip: () -> Unit, modifier: Modifier = Modifier, ink: Color? = null, size: Dp = 60.dp) {
     val scope = rememberCoroutineScope()
     val ripple = remember { Animatable(1f) }
     val shown by animateFloatAsState(charge.coerceIn(0f, 1f), tween(250), label = "charge")
@@ -54,7 +56,7 @@ fun WaterCup(charge: Float, onDip: () -> Unit, modifier: Modifier = Modifier, si
         modifier
             .size(size)
             .semantics {
-                contentDescription = "Water cup: dip the brush"
+                contentDescription = if (ink != null) "Ink well: dip the pen" else "Water cup: dip the brush"
                 role = Role.Button
                 onClick { dip(); true }
             }
@@ -71,18 +73,43 @@ fun WaterCup(charge: Float, onDip: () -> Unit, modifier: Modifier = Modifier, si
         // The cup's shadow and rim.
         drawCircle(Color.Black.copy(alpha = 0.18f), r, c + Offset(0f, r * 0.05f))
         drawCircle(AquaColors.Panel, r)
-        drawCircle(Color.White.copy(alpha = 0.85f), r * 0.86f)
-        // Water: clear, a little blue, deeper in the middle.
-        drawCircle(
-            Brush.radialGradient(
-                listOf(Color(0xFF9CC9E8).copy(alpha = 0.75f), Color(0xFFCFE6F5).copy(alpha = 0.6f)),
-                center = c - Offset(r * 0.2f, r * 0.2f),
-                radius = r,
-            ),
-            r * 0.78f,
-        )
-        // A highlight on the water.
-        drawCircle(Color.White.copy(alpha = 0.55f), r * 0.16f, c - Offset(r * 0.3f, r * 0.32f))
+        if (ink == null) {
+            drawCircle(Color.White.copy(alpha = 0.85f), r * 0.86f)
+            // Water: clear, a little blue, deeper in the middle.
+            drawCircle(
+                Brush.radialGradient(
+                    listOf(Color(0xFF9CC9E8).copy(alpha = 0.75f), Color(0xFFCFE6F5).copy(alpha = 0.6f)),
+                    center = c - Offset(r * 0.2f, r * 0.2f),
+                    radius = r,
+                ),
+                r * 0.78f,
+            )
+            // A highlight on the water.
+            drawCircle(Color.White.copy(alpha = 0.55f), r * 0.16f, c - Offset(r * 0.3f, r * 0.32f))
+        } else {
+            // A squat glass well: a thick, smoky rim round a narrow opening of ink.
+            drawCircle(
+                Brush.radialGradient(
+                    listOf(Color(0xFF5A6068), Color(0xFF2A2D33)),
+                    center = c - Offset(r * 0.3f, r * 0.3f),
+                    radius = r * 1.2f,
+                ),
+                r * 0.86f,
+            )
+            drawCircle(Color.White.copy(alpha = 0.18f), r * 0.86f, style = Stroke(width = r * 0.04f))
+            drawCircle(Color.Black.copy(alpha = 0.6f), r * 0.6f)
+            drawCircle(
+                Brush.radialGradient(
+                    listOf(lerp(ink, Color.White, 0.18f), lerp(ink, Color.Black, 0.45f)),
+                    center = c - Offset(r * 0.15f, r * 0.15f),
+                    radius = r * 0.6f,
+                ),
+                r * 0.52f,
+            )
+            // Light on the glass, and a glint on the ink.
+            drawArc(Color.White.copy(alpha = 0.35f), 200f, 60f, false, c - Offset(r * 0.73f, r * 0.73f), Size(r * 1.46f, r * 1.46f), style = Stroke(r * 0.08f, cap = StrokeCap.Round))
+            drawCircle(Color.White.copy(alpha = 0.45f), r * 0.09f, c - Offset(r * 0.2f, r * 0.22f))
+        }
         // Ripples spreading out from a dip.
         val t = ripple.value
         if (t < 1f) {
@@ -90,8 +117,8 @@ fun WaterCup(charge: Float, onDip: () -> Unit, modifier: Modifier = Modifier, si
                 val tk = (t * 1.3f - k * 0.3f).coerceIn(0f, 1f)
                 if (tk > 0f && tk < 1f) {
                     drawCircle(
-                        Color.White.copy(alpha = 0.8f * (1f - tk)),
-                        r * 0.78f * tk,
+                        Color.White.copy(alpha = (if (ink == null) 0.8f else 0.45f) * (1f - tk)),
+                        r * (if (ink == null) 0.78f else 0.52f) * tk,
                         style = Stroke(width = r * 0.07f),
                     )
                 }

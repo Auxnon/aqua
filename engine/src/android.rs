@@ -28,7 +28,8 @@ enum Cmd {
     View(View),
     Tilt(f32, f32),
     Brush(BrushSettings),
-    Charge(f32),
+    Charge(u32, f32),
+    PaperColor([f32; 3]),
     Stroke(i32, Vec<InputPoint>),
     NewCanvas(u32, u32, u32, u32, u32, SyncSender<()>),
     Load(PathBuf, SyncSender<bool>),
@@ -156,7 +157,8 @@ fn handle_cmd(engine: &mut Engine, window: &mut Option<NativeWindow>, c: Cmd) ->
             }
         }
         Cmd::Brush(b) => engine.brush = b,
-        Cmd::Charge(v) => engine.set_charge(v),
+        Cmd::Charge(tool, v) => engine.set_charge(tool, v),
+        Cmd::PaperColor(c) => engine.set_paper_color(c),
         Cmd::Stroke(phase, pts) => engine.stroke(phase, &pts),
         Cmd::NewCanvas(w, h, kind, seed, home, reply) => {
             engine.new_canvas(w, h, kind, seed, home);
@@ -246,6 +248,8 @@ fn handle_cmd(engine: &mut Engine, window: &mut Option<NativeWindow>, c: Cmd) ->
                     "canRedo": c.can_redo(),
                     "revision": c.revision,
                     "charge": engine.charge,
+                    "inkCharge": engine.ink_charge,
+                    "paper": c.paper_color(),
                     "layers": c.layer_infos(),
                 })
                 .to_string(),
@@ -353,11 +357,17 @@ pub extern "system" fn Java_app_aqua_engine_Native_setBrush(mut env: JNIEnv, _c:
     }
 }
 
-/// Negative: brushes are always wet. Otherwise the watercolour brush now holds
-/// this much water and runs dry as it paints (1 = just dipped).
+/// Negative: brushes are always wet. Otherwise `tool`'s brush now holds this
+/// much water (or ink, for the pen) and runs dry as it paints (1 = just dipped).
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_app_aqua_engine_Native_setCharge(_env: JNIEnv, _c: JClass, h: jlong, v: jfloat) {
-    send(h, Cmd::Charge(v));
+pub extern "system" fn Java_app_aqua_engine_Native_setCharge(_env: JNIEnv, _c: JClass, h: jlong, tool: jint, v: jfloat) {
+    send(h, Cmd::Charge(tool.max(0) as u32, v));
+}
+
+/// Recolours the paper (sRGB, 0..1).
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_app_aqua_engine_Native_setPaperColor(_env: JNIEnv, _c: JClass, h: jlong, r: jfloat, g: jfloat, b: jfloat) {
+    send(h, Cmd::PaperColor([r, g, b]));
 }
 
 /// phase: 0 begin, 1 move, 2 end, 3 cancel. pts: (x, y, pressure, tilt x, tilt y) in canvas pixels.

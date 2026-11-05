@@ -63,7 +63,15 @@ zones.
   Touching the water cup (bottom left, a cup seen from above) fills it again;
   the ring round its rim shows what the brush holds and turns orange when
   nearly dry. Clear water and Push leave the dock in this mode (W and P do
-  nothing; D dips on the web). Ink and the eraser are unaffected.
+  nothing; D dips on the web). The ink pen carries its own ink the same way:
+  with the pen selected the cup becomes an ink well (dark glass round the
+  pen's ink), and a pen running dry goes faint and scratchy, then stops. The
+  eraser is unaffected.
+- **Paper colour.** A new painting is on white or black paper. The paper sits
+  at the bottom of the Layers list as its own row; selecting it shows paper
+  swatches (warm white to black) and hue, tone and lightness sliders.
+  Watercolour is transparent, so it shows faintly on dark paper; light ink
+  shows best there.
 - **Eyedropper kinds.** *Wash* (the default) reads the paint itself under the
   point, summed over the visible layers, the same way the palette's Pick reads
   the tray: a pale wash picks up as a thinned paint, and bare paper picks up

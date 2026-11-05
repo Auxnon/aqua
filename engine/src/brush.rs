@@ -52,9 +52,10 @@ pub struct BrushSettings {
     pub pressure_size: f32,
     pub pressure_flow: f32,
     pub smoothing: f32,
-    /// Watercolour only. None: the brush is freshly loaded with water for every
-    /// stroke. Some: how much water it still holds (0..1), carried from stroke
-    /// to stroke; it runs dry and has to be dipped (see `Engine::charge`).
+    /// Watercolour and ink. None: the brush is freshly loaded for every stroke.
+    /// Some: how much water (or, for the pen, ink) it still holds (0..1),
+    /// carried from stroke to stroke; it runs dry and has to be dipped (see
+    /// `Engine::charge`).
     pub charge: Option<f32>,
 }
 
@@ -218,14 +219,14 @@ impl Stroke {
         }
     }
 
-    /// How much water the brush still holds (0..1).
+    /// How much water (or ink) the brush still holds (0..1).
     pub fn charge(&self) -> f32 {
         self.water_res
     }
 
     /// True when the brush carries its water from stroke to stroke.
     fn dipped(&self) -> bool {
-        self.settings.charge.is_some() && self.settings.tool == Tool::Watercolor
+        self.settings.charge.is_some() && matches!(self.settings.tool, Tool::Watercolor | Tool::Ink)
     }
 
     fn spacing(&self, radius: f32) -> f32 {
@@ -501,8 +502,13 @@ impl Stroke {
         let angle = self.dir[1].atan2(self.dir[0]);
 
         // The reservoir empties with distance; more water lets a stroke go further.
-        // A brush that has to be dipped holds a few strokes' worth.
-        let reach = s.size * if self.dipped() { 10.0 + 40.0 * s.water } else { 25.0 + 90.0 * s.water };
+        // A brush that has to be dipped holds a few strokes' worth; a dip pen
+        // writes a line or two (more with a bigger nib, less with more load).
+        let reach = match (self.dipped(), s.tool) {
+            (true, Tool::Ink) => (1400.0 + 160.0 * s.size) * (1.3 - 0.5 * s.load),
+            (true, _) => s.size * (10.0 + 40.0 * s.water),
+            _ => s.size * (25.0 + 90.0 * s.water),
+        };
         let decay = (-step / reach).exp();
         self.water_res *= decay;
         self.paint_res *= (-step / (reach * 1.4)).exp();
@@ -547,8 +553,20 @@ impl Stroke {
                 out.push((DabKind::Wet, dab));
             }
             Tool::Ink => {
+                // A dip pen running out of ink goes faint and scratchy, then stops.
+                let pull = if self.dipped() { smoothstep(0.03, 0.3, self.water_res) } else { 1.0 };
+                if pull <= 0.0 {
+                    return;
+                }
                 // Ink is dense: several times the concentration of a watercolour load.
-                let amt = 2.5 * flow * density * (0.4 + 0.6 * s.load);
+                let amt = 2.5 * flow * density * (0.4 + 0.6 * s.load) * pull;
+                if pull < 1.0 {
+                    // Skips where the nib is too dry to lay a line.
+                    let skip = self.rand();
+                    if skip > 0.35 + 0.65 * pull {
+                        return;
+                    }
+                }
                 // A pen blot spreads less than wet ink feathers.
                 dab.pos_radius[2] = self.radius(p.pressure) * grow.sqrt();
                 dab.shape[0] = (1.2 / radius).clamp(0.02, 0.5) + s.bleed.clamp(0.0, 1.0) * 0.15;
@@ -630,6 +648,20 @@ mod tests {
         // An endless brush starts every stroke full.
         let st = Stroke::new(BrushSettings::default(), 1);
         assert_eq!(st.charge(), 1.0);
+    }
+
+    #[test]
+    fn a_dip_pen_runs_out_of_ink() {
+        let s = BrushSettings { tool: Tool::Ink, size: 3.0, charge: Some(1.0), ..Default::default() };
+        let mut st = Stroke::new(s, 1);
+        let mut out = Vec::new();
+        for i in 0..2000 {
+            st.add(InputPoint { x: i as f32 * 5.0, y: 0.0, pressure: 1.0, ..Default::default() }, &mut out);
+        }
+        assert!(st.charge() < 0.03, "{}", st.charge());
+        out.clear();
+        st.add(InputPoint { x: 10005.0, y: 0.0, pressure: 1.0, ..Default::default() }, &mut out);
+        assert!(out.is_empty(), "a dry pen lays nothing");
     }
 
     #[test]

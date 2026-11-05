@@ -116,10 +116,21 @@ export function createEditor(root, engine, canvas, { onExit }) {
     <defs><radialGradient id="cupwater" cx="0.4" cy="0.4" r="0.65">
       <stop offset="0" stop-color="#9cc9e8" stop-opacity="0.85"/><stop offset="1" stop-color="#cfe6f5" stop-opacity="0.7"/>
     </radialGradient></defs>
+    <radialGradient id="wellglass" cx="0.35" cy="0.35" r="0.75"><stop offset="0" stop-color="#5a6068"/><stop offset="1" stop-color="#2a2d33"/></radialGradient>
+    <radialGradient id="wellink" cx="0.42" cy="0.42" r="0.6"><stop class="ink-hi" offset="0"/><stop class="ink-lo" offset="1"/></radialGradient>
     <circle cx="30" cy="30" r="30" fill="#1a1a1e"/>
-    <circle cx="30" cy="30" r="25.8" fill="rgba(255,255,255,0.88)"/>
-    <circle cx="30" cy="30" r="23.4" fill="url(#cupwater)"/>
-    <circle cx="21" cy="20.4" r="4.8" fill="rgba(255,255,255,0.55)"/>
+    <g class="water">
+      <circle cx="30" cy="30" r="25.8" fill="rgba(255,255,255,0.88)"/>
+      <circle cx="30" cy="30" r="23.4" fill="url(#cupwater)"/>
+      <circle cx="21" cy="20.4" r="4.8" fill="rgba(255,255,255,0.55)"/>
+    </g>
+    <g class="well">
+      <circle cx="30" cy="30" r="25.8" fill="url(#wellglass)" stroke="rgba(255,255,255,0.18)" stroke-width="1.2"/>
+      <circle cx="30" cy="30" r="18" fill="rgba(0,0,0,0.6)"/>
+      <circle cx="30" cy="30" r="15.6" fill="url(#wellink)"/>
+      <path d="M8.6 22.2a22 22 0 0 1 13.6-13.6" fill="none" stroke="rgba(255,255,255,0.35)" stroke-width="2.4" stroke-linecap="round"/>
+      <circle cx="24" cy="23.4" r="2.7" fill="rgba(255,255,255,0.45)"/>
+    </g>
     <circle class="ripple" cx="30" cy="30" r="23" fill="none" stroke="#fff" stroke-width="2"/>
     <circle class="ripple late" cx="30" cy="30" r="23" fill="none" stroke="#fff" stroke-width="2"/>
     <circle cx="30" cy="30" r="26.2" fill="none" stroke="rgba(154,152,148,0.25)" stroke-width="3.6"/>
@@ -127,6 +138,8 @@ export function createEditor(root, engine, canvas, { onExit }) {
       transform="rotate(-90 30 30)" stroke-dasharray="${LEVEL}" stroke-dashoffset="0"/>
   </svg>`;
   const level = cup.querySelector('.level');
+  const inkHi = cup.querySelector('.ink-hi');
+  const inkLo = cup.querySelector('.ink-lo');
   // On touch down, as a brush is dipped, not on release.
   cup.addEventListener('pointerdown', (e) => { e.stopPropagation(); e.preventDefault(); dipBrush(); });
   cup.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); dipBrush(); } });
@@ -179,9 +192,9 @@ export function createEditor(root, engine, canvas, { onExit }) {
   /** Switches between brushes that are always wet and brushes that run dry and are dipped. */
   function setDip(on, tell = true) {
     dip = on;
-    // A fresh brush starts full.
-    engine.setCharge(on ? 1 : -1);
-    info = { ...info, charge: on ? 1 : null };
+    // A fresh brush (and pen) starts full.
+    engine.setCharge(Tool.Watercolor, on ? 1 : -1);
+    info = { ...info, charge: on ? 1 : null, inkCharge: 1 };
     // Dipping is how the brush gets its water, and a dry brush pushes wet
     // paint by itself, so those two tools aren't needed.
     if (on && (tool === Tool.Water || tool === Tool.Push)) selectTool(Tool.Watercolor);
@@ -192,9 +205,15 @@ export function createEditor(root, engine, canvas, { onExit }) {
     render();
   }
 
+  /** Dips the pen in the ink well, or any other brush in the water cup. */
   function dipBrush() {
-    engine.setCharge(1);
-    info = { ...info, charge: 1 };
+    if (brushTool === Tool.Ink) {
+      engine.setCharge(Tool.Ink, 1);
+      info = { ...info, inkCharge: 1 };
+    } else {
+      engine.setCharge(Tool.Watercolor, 1);
+      info = { ...info, charge: 1 };
+    }
     cup.classList.remove('dipped');
     void cup.offsetWidth; // restart the ripple
     cup.classList.add('dipped');
@@ -305,7 +324,18 @@ export function createEditor(root, engine, canvas, { onExit }) {
     }
     setSelected(dipB, dip);
     cup.hidden = !dip;
-    const charge = Math.min(1, Math.max(0, info.charge ?? 1));
+    // With the pen it is an ink well, of the pen's ink.
+    const well = brushTool === Tool.Ink;
+    cup.classList.toggle('ink', well);
+    const cupLabel = well ? 'Ink well: dip the pen' : 'Water cup: dip the brush';
+    if (cup.title !== cupLabel) { cup.title = cupLabel; cup.setAttribute('aria-label', cupLabel); }
+    if (well) {
+      const [r, g, b] = Pigment.rgb(Pigment.masstone(ink));
+      const mix = (t, to) => `rgb(${[r, g, b].map((c) => Math.round((c + (to - c) * t) * 255)).join(' ')})`;
+      inkHi.setAttribute('stop-color', mix(0.18, 1));
+      inkLo.setAttribute('stop-color', mix(0.45, 0));
+    }
+    const charge = Math.min(1, Math.max(0, (well ? info.inkCharge : info.charge) ?? 1));
     level.style.strokeDashoffset = `${LEVEL * (1 - charge)}`;
     level.style.stroke = charge < 0.15 ? '#d08040' : '';
     level.style.opacity = charge < 0.005 ? '0' : '1';

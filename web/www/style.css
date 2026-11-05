@@ -297,6 +297,9 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 }
 .layer-row.active { background: rgba(143, 211, 203, 0.16); }
 .layer-row .name { flex: 1; }
+.layer-row.paper:not(.active) { background: rgba(42, 42, 48, 0.25); color: var(--text-dim); }
+.paper-swatches { display: flex; justify-content: space-between; margin-bottom: 8px; }
+.caption.dim { font-size: 11px; opacity: 0.75; }
 .layer-row .wet { color: var(--accent); display: inline-grid; }
 .layer-actions { display: flex; justify-content: space-between; margin-top: 4px; }
 
@@ -339,10 +342,19 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
   filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.35));
 }
 .cup svg { display: block; }
+.cup .well { display: none; }
+.cup.ink .well { display: inline; }
+.cup.ink .water { display: none; }
+.cup.ink .ripple { transform: scale(0.68); }
 .cup .level { transition: stroke-dashoffset 250ms, stroke 250ms; }
 .cup .ripple { opacity: 0; transform-origin: 30px 30px; }
 .cup.dipped .ripple { animation: ripple 700ms linear; }
 .cup.dipped .ripple.late { animation-delay: 200ms; animation-duration: 500ms; }
+.cup.ink.dipped .ripple { animation-name: ripple-well; }
+@keyframes ripple-well {
+  from { opacity: 0.5; transform: scale(0.04); }
+  to { opacity: 0; transform: scale(0.68); }
+}
 @keyframes ripple {
   from { opacity: 0.85; transform: scale(0.05); }
   to { opacity: 0; transform: scale(1); }

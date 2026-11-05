@@ -68,6 +68,10 @@ data class LayerInfo(
     val flow: Float,
 )
 
+/** The usual warm white paper, and black paper (`PaperSpec::white` and `black` in the engine). */
+const val PAPER_WHITE = 0xFFF7F5EF.toInt()
+const val PAPER_BLACK = 0xFF1C1B1A.toInt()
+
 data class CanvasInfo(
     val width: Int = 0,
     val height: Int = 0,
@@ -79,6 +83,10 @@ data class CanvasInfo(
     val revision: Long = 0,
     /** How much water the brush holds when it has to be dipped; null when it is always wet. */
     val charge: Float? = null,
+    /** In dip mode, the ink left on the pen. */
+    val inkCharge: Float = 1f,
+    /** The paper's colour (ARGB). */
+    val paper: Int = PAPER_WHITE,
     val layers: List<LayerInfo> = emptyList(),
 ) {
     companion object {
@@ -109,8 +117,20 @@ data class CanvasInfo(
                 canRedo = o.getBoolean("canRedo"),
                 revision = o.getLong("revision"),
                 charge = if (o.isNull("charge")) null else o.getDouble("charge").toFloat(),
+                inkCharge = o.optDouble("inkCharge", 1.0).toFloat(),
+                paper = o.optJSONArray("paper")?.let {
+                    android.graphics.Color.argb(1f, it.getDouble(0).toFloat(), it.getDouble(1).toFloat(), it.getDouble(2).toFloat())
+                } ?: PAPER_WHITE,
                 layers = layers,
             )
         }
     }
 }
+
+/** Recolours the open painting's paper. */
+fun setPaper(engine: Long, argb: Int) = Native.setPaperColor(
+    engine,
+    android.graphics.Color.red(argb) / 255f,
+    android.graphics.Color.green(argb) / 255f,
+    android.graphics.Color.blue(argb) / 255f,
+)

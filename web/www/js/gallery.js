@@ -134,16 +134,20 @@ export function createGallery(root, { onOpen, onCreate }) {
     const papers = ['Cold press', 'Hot press', 'Rough'];
     let size = presets[0];
     let paper = 0;
+    let black = false;
+    const colourRow = h('div', { class: 'choices' });
     const sizes = h('div', { class: 'choices column' });
     const paperRow = h('div', { class: 'choices' });
     const draw = () => {
       sizes.replaceChildren(...presets.map((p) => h('button', { class: `chip${p === size ? ' on' : ''}`, onclick: () => { size = p; draw(); } }, `${p[0]}  ·  ${p[1]}×${p[2]}`)));
       paperRow.replaceChildren(...papers.map((name, i) => h('button', { class: `chip${i === paper ? ' on' : ''}`, onclick: () => { paper = i; draw(); } }, name)));
+      colourRow.replaceChildren(...[['White', false], ['Black', true]].map(([name, b]) => h('button', { class: `chip${b === black ? ' on' : ''}`, onclick: () => { black = b; draw(); } }, name)));
     };
     draw();
-    dialog('New painting', [h('div', { class: 'caption' }, 'Size'), sizes, h('div', { class: 'caption' }, 'Paper'), paperRow], [
+    dialog('New painting', [h('div', { class: 'caption' }, 'Size'), sizes, h('div', { class: 'caption' }, 'Paper'), paperRow,
+      h('div', { class: 'caption' }, 'Colour'), colourRow, h('div', { class: 'caption dim' }, 'Change it any time from the paper under the layers.')], [
       ['Cancel', () => true],
-      ['Create', async () => { await onCreate(size[1], size[2], paper); return true; }],
+      ['Create', async () => { await onCreate(size[1], size[2], paper, black); return true; }],
     ]);
   }
 

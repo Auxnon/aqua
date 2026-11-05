@@ -1,7 +1,7 @@
 // Starts the engine and switches between the gallery and the editor.
 
 import { createEditor } from './editor.js';
-import { loadWasm, startEngine } from './engine.js';
+import { PAPER_BLACK, loadWasm, startEngine } from './engine.js';
 import { createGallery } from './gallery.js';
 import { tray } from './panels.js';
 import { newId, readPainting, writePainting } from './store.js';
@@ -41,10 +41,11 @@ async function main() {
       show('editor');
       editor.open(id);
     },
-    async onCreate(w, h, paper) {
+    async onCreate(w, h, paper, black) {
       const id = newId();
       // The painting is kept the way up it is now, whichever way the device turns later.
       engine.newCanvas(w, h, paper, 1 + Math.floor(Math.random() * 0x7ffffffe), screenQuarter());
+      if (black) engine.setPaperColor(PAPER_BLACK);
       await writePainting(id, await engine.save());
       show('editor');
       editor.open(id);

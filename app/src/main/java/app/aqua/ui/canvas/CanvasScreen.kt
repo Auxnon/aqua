@@ -189,9 +189,9 @@ fun CanvasScreen(dir: File, onExit: (Arrival?) -> Unit) {
     }
 
     LaunchedEffect(dip) {
-        // A fresh brush starts full.
-        Native.setCharge(engine, if (dip) 1f else -1f)
-        info = info.copy(charge = if (dip) 1f else null)
+        // A fresh brush (and pen) starts full.
+        Native.setCharge(engine, Tool.Watercolor.id, if (dip) 1f else -1f)
+        info = info.copy(charge = if (dip) 1f else null, inkCharge = 1f)
         // Dipping is how the brush gets its water, and a dry brush pushes wet
         // paint by itself, so those two tools aren't needed.
         if (dip && (tool == Tool.Water || tool == Tool.Push)) {
@@ -201,9 +201,15 @@ fun CanvasScreen(dir: File, onExit: (Arrival?) -> Unit) {
         }
     }
 
+    /** Dips the pen in the ink well, or any other brush in the water cup. */
     fun dipBrush() {
-        Native.setCharge(engine, 1f)
-        info = info.copy(charge = 1f)
+        if (brushTool == Tool.Ink) {
+            Native.setCharge(engine, Tool.Ink.id, 1f)
+            info = info.copy(inkCharge = 1f)
+        } else {
+            Native.setCharge(engine, Tool.Watercolor.id, 1f)
+            info = info.copy(charge = 1f)
+        }
     }
 
     fun setColor(p: Pigment) {
@@ -377,7 +383,12 @@ fun CanvasScreen(dir: File, onExit: (Arrival?) -> Unit) {
                 exit = fadeOut(),
                 modifier = Modifier.align(Alignment.BottomStart).navigationBarsPadding().padding(start = 12.dp, bottom = 12.dp),
             ) {
-                WaterCup(info.charge ?: 1f, { dipBrush() })
+                // With the pen it is an ink well, of the pen's ink.
+                if (brushTool == Tool.Ink) {
+                    WaterCup(info.inkCharge, { dipBrush() }, ink = Color(ink.masstoneArgb))
+                } else {
+                    WaterCup(info.charge ?: 1f, { dipBrush() })
+                }
             }
 
             // Panels.

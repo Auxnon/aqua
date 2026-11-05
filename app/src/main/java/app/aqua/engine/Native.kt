@@ -23,10 +23,13 @@ object Native {
     @JvmStatic external fun setBrush(handle: Long, tool: Int, params: FloatArray)
 
     /**
-     * Negative: brushes are always wet. Otherwise the watercolour brush now holds
-     * this much water and runs dry as it paints (1 = just dipped).
+     * Negative: brushes are always wet. Otherwise [tool]'s brush now holds this
+     * much water (or ink, for the pen) and runs dry as it paints (1 = just dipped).
      */
-    @JvmStatic external fun setCharge(handle: Long, charge: Float)
+    @JvmStatic external fun setCharge(handle: Long, tool: Int, charge: Float)
+
+    /** Recolours the paper of the open painting (sRGB, 0..1). */
+    @JvmStatic external fun setPaperColor(handle: Long, r: Float, g: Float, b: Float)
 
     /** phase: 0 begin, 1 move, 2 end, 3 cancel; points are (x, y, pressure) in canvas pixels. */
     @JvmStatic external fun stroke(handle: Long, phase: Int, points: FloatArray)

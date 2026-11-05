@@ -9,7 +9,7 @@ use web_time::Instant;
 
 use bytemuck::{Pod, Zeroable};
 
-use crate::brush::{BrushSettings, InputPoint};
+use crate::brush::{BrushSettings, InputPoint, Tool};
 use crate::canvas::{Canvas, PaperSpec, STEPS_PER_SECOND, tv};
 use crate::gpu::Gpu;
 use crate::pipelines::{Pipelines, present_pipeline};
@@ -65,8 +65,10 @@ pub struct Engine {
     pub view: View,
     pub brush: BrushSettings,
     /// None: brushes are always wet. Some: the watercolour brush's water, kept
-    /// between strokes; it runs dry until dipped (`set_charge(1.0)`).
+    /// between strokes; it runs dry until dipped (`set_charge`).
     pub charge: Option<f32>,
+    /// In dip mode, the ink left on the pen; it is dipped in the ink well.
+    pub ink_charge: f32,
     last_frame: Option<Instant>,
     step_debt: f32,
     last_input: Option<Instant>,
@@ -85,6 +87,7 @@ impl Engine {
             view: View::default(),
             brush: BrushSettings::default(),
             charge: None,
+            ink_charge: 1.0,
             last_frame: None,
             step_debt: 0.0,
             last_input: None,
@@ -164,10 +167,39 @@ impl Engine {
         self.last_frame = None;
     }
 
-    /// Negative: brushes are always wet. Otherwise the brush now holds this much
-    /// water (1 = just dipped).
-    pub fn set_charge(&mut self, v: f32) {
-        self.charge = (v >= 0.0).then(|| v.min(1.0));
+    /// Negative: brushes are always wet. Otherwise `tool`'s brush now holds
+    /// this much (1 = just dipped): water for watercolour, ink for the ink pen.
+    /// Turning dip mode on fills both.
+    pub fn set_charge(&mut self, tool: u32, v: f32) {
+        if v < 0.0 {
+            self.charge = None;
+            return;
+        }
+        if self.charge.is_none() {
+            self.charge = Some(1.0);
+            self.ink_charge = 1.0;
+        }
+        match Tool::from_u32(tool) {
+            Tool::Ink => self.ink_charge = v.min(1.0),
+            _ => self.charge = Some(v.min(1.0)),
+        }
+    }
+
+    /// Recolours the bare paper (sRGB, 0..1).
+    pub fn set_paper_color(&mut self, rgb: [f32; 3]) {
+        if let Some(c) = self.canvas.as_mut() {
+            c.set_paper_color(rgb);
+            self.needs_present = true;
+        }
+    }
+
+    /// The brush's charge for the current tool, when it carries one.
+    fn tool_charge(&self) -> Option<f32> {
+        match self.brush.tool {
+            Tool::Watercolor => self.charge,
+            Tool::Ink => self.charge.map(|_| self.ink_charge),
+            _ => None,
+        }
     }
 
     pub fn set_view(&mut self, v: View) {
@@ -177,22 +209,25 @@ impl Engine {
     }
 
     pub fn stroke(&mut self, phase: i32, pts: &[InputPoint]) {
+        let charge = self.tool_charge();
         let Some(c) = self.canvas.as_mut() else { return };
         match phase {
             3 => c.cancel_stroke(),
             _ => {
                 for (i, p) in pts.iter().enumerate() {
                     if phase == 0 && i == 0 {
-                        let charge = if self.brush.tool == crate::brush::Tool::Watercolor { self.charge } else { None };
                         c.begin_stroke(BrushSettings { charge, ..self.brush }, *p);
                     } else {
                         c.stroke_to(*p);
                     }
                 }
-                if self.charge.is_some() && self.brush.tool == crate::brush::Tool::Watercolor
-                    && let Some(left) = c.stroke_charge() {
-                        self.charge = Some(left);
+                if let Some(left) = c.stroke_charge() {
+                    match self.brush.tool {
+                        Tool::Watercolor if self.charge.is_some() => self.charge = Some(left),
+                        Tool::Ink if self.charge.is_some() => self.ink_charge = left,
+                        _ => {}
                     }
+                }
                 if phase == 2 {
                     c.end_stroke(pts.last().copied());
                 }

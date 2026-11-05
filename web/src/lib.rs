@@ -68,10 +68,15 @@ impl AquaEngine {
         }
     }
 
-    /// Negative: brushes are always wet. Otherwise the watercolour brush now
-    /// holds this much water and runs dry as it paints (1 = just dipped).
-    pub fn set_charge(&self, v: f32) {
-        self.engine.borrow_mut().set_charge(v);
+    /// Negative: brushes are always wet. Otherwise `tool`'s brush now holds
+    /// this much water (or ink, for the pen) and runs dry as it paints (1 = just dipped).
+    pub fn set_charge(&self, tool: u32, v: f32) {
+        self.engine.borrow_mut().set_charge(tool, v);
+    }
+
+    /// Recolours the paper (sRGB, 0..1).
+    pub fn set_paper_color(&self, r: f32, g: f32, b: f32) {
+        self.engine.borrow_mut().set_paper_color([r, g, b]);
     }
 
     /// phase: 0 begin, 1 move, 2 end, 3 cancel; points are (x, y, pressure, tilt x, tilt y) in canvas pixels.
@@ -200,6 +205,8 @@ impl AquaEngine {
                 "canRedo": c.can_redo(),
                 "revision": c.revision,
                 "charge": e.charge,
+                "inkCharge": e.ink_charge,
+                "paper": c.paper_color(),
                 "layers": c.layer_infos(),
             })
             .to_string(),

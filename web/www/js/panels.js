@@ -1,7 +1,7 @@
 // The floating panels: brush settings, layers and the mixing palette. Same
 // contents as the Android BrushPanel, LayersPanel and PalettePanel.
 
-import { AquaPalette, LayerOp, Pigment, Tool, presetPigments } from './engine.js';
+import { AquaPalette, LayerOp, PAPER_BLACK, PAPER_WHITE, Pigment, Tool, presetPigments } from './engine.js';
 import { I } from './icons.js';
 import { getValue, setValue } from './store.js';
 import { clamp, h, icon, labeledSlider, roundButton } from './ui.js';
@@ -84,6 +84,10 @@ export function layersPanel(engine, onChanged) {
   const el = panel('layers-panel', h('div', { class: 'panel-head' }, h('div', { class: 'panel-title' }, 'Layers'), add), list, props);
   let info = { layers: [], active: 0 };
   let propsFor = null;
+  // The paper is shown as the bottom of the stack; selecting it edits its colour.
+  let paperOpen = false;
+  const paperSwatch = h('span', { class: 'swatch', style: { width: '20px', height: '20px' } });
+  const paperRow = h('div', { class: 'layer-row paper', onclick: () => { paperOpen = !paperOpen; propsFor = null; update(info); } }, h('span', { class: 'name' }, 'Paper'), paperSwatch);
 
   function update(next) {
     info = next;
@@ -94,9 +98,21 @@ export function layersPanel(engine, onChanged) {
       ...[...(info.layers ?? [])].map((l, i) => ({ l, i })).reverse().map(({ l, i }) => {
         const vis = roundButton(l.visible ? I.eye : I.eyeOff, 'Visibility', () => op(LayerOp.VISIBLE, i, l.visible ? 0 : 1), { size: 30, cls: l.visible ? '' : 'dim' });
         const wet = l.wet ? h('span', { class: 'wet', title: 'Wet', style: { opacity: 0.35 + clamp(l.wetness, 0, 1) * 0.65 } }, icon(I.drop, 16)) : null;
-        return h('div', { class: `layer-row${i === info.active ? ' active' : ''}`, onclick: () => op(LayerOp.SELECT, i) }, h('span', { class: 'name' }, l.name), wet, vis);
+        const select = () => { if (paperOpen) { paperOpen = false; propsFor = null; } op(LayerOp.SELECT, i); };
+        return h('div', { class: `layer-row${i === info.active && !paperOpen ? ' active' : ''}`, onclick: select }, h('span', { class: 'name' }, l.name), wet, vis);
       }),
+      paperRow,
     );
+    const paper = info.paper ?? PAPER_WHITE;
+    paperSwatch.style.setProperty('--c', rgbCss(paper));
+    paperRow.classList.toggle('active', paperOpen);
+    if (paperOpen) {
+      if (propsFor !== 'paper') {
+        propsFor = 'paper';
+        props.replaceChildren(paperEditor(paper, (c) => { engine.setPaperColor(c); onChanged(); }));
+      }
+      return;
+    }
     const layer = info.layers?.[info.active];
     if (!layer) return;
     // Rebuilt only when another layer is selected, so a slider being dragged survives updates.
@@ -122,6 +138,48 @@ export function layersPanel(engine, onChanged) {
   }
 
   return { el, update };
+}
+
+// ------------------------------------------------------------------ paper
+
+/** Papers to start from: the usual warm white through toned papers to black. */
+const PAPERS = [PAPER_WHITE, [1, 1, 1], [0.953, 0.902, 0.784], [0.788, 0.69, 0.549], [0.659, 0.518, 0.384], [0.616, 0.651, 0.659], [0.486, 0.561, 0.651], [0.2, 0.212, 0.231], PAPER_BLACK];
+
+const rgbCss = (c) => `rgb(${c.map((v) => Math.round(clamp(v, 0, 1) * 255)).join(' ')})`;
+
+function toHsv([r, g, b]) {
+  const max = Math.max(r, g, b);
+  const d = max - Math.min(r, g, b);
+  let hue = 0;
+  if (d > 0) hue = max === r ? ((g - b) / d + 6) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  return [hue / 6, max > 0 ? d / max : 0, max];
+}
+
+function fromHsv([hue, s, v]) {
+  const f = (n) => { const k = (n + hue * 6) % 6; return v - v * s * clamp(Math.min(k, 4 - k), 0, 1); };
+  return [f(5), f(3), f(1)];
+}
+
+/**
+ * The paper's colour: the background under every layer. Watercolour is
+ * transparent, so on dark paper it shows faintly; light ink shows best there.
+ */
+function paperEditor(current, onChange) {
+  let hsv = toHsv(current);
+  const sliders = h('div');
+  const setSliders = () => sliders.replaceChildren(
+    labeledSlider('Hue', hsv[0], (v) => { hsv[0] = v; onChange(fromHsv(hsv)); }, { format: (v) => `${Math.round(v * 360)}°` }),
+    labeledSlider('Tone', hsv[1], (v) => { hsv[1] = v; onChange(fromHsv(hsv)); }),
+    labeledSlider('Lightness', hsv[2], (v) => { hsv[2] = v; onChange(fromHsv(hsv)); }),
+  );
+  const swatches = h('div', { class: 'paper-swatches' }, PAPERS.map((c) => h('button', {
+    class: 'swatch',
+    title: 'Paper colour',
+    style: { width: '26px', height: '26px', '--c': rgbCss(c) },
+    onclick: () => { hsv = toHsv(c); setSliders(); onChange(c); },
+  })));
+  setSliders();
+  return h('div', {}, swatches, sliders);
 }
 
 // ------------------------------------------------------------------ palette
