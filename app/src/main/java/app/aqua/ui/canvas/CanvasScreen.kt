@@ -31,6 +31,7 @@ import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.Redo
 import androidx.compose.material.icons.automirrored.outlined.Undo
 import androidx.compose.material.icons.outlined.Air
+import androidx.compose.material.icons.outlined.AllInclusive
 import androidx.compose.material.icons.outlined.Brush
 import androidx.compose.material.icons.outlined.Colorize
 import androidx.compose.material.icons.outlined.HistoryEdu
@@ -116,6 +117,8 @@ fun CanvasScreen(dir: File, onExit: (Arrival?) -> Unit) {
     var overviewHint by remember { mutableStateOf(false) }
     val pinchToGallery = remember { app.settings.pinchOut == PinchOut.Gallery }
     var pickKind by remember { mutableStateOf(app.settings.pickKind) }
+    // The brush runs out of water and has to be dipped in the cup.
+    var dip by remember { mutableStateOf(app.settings.dip) }
     var surface by remember { mutableStateOf<CanvasSurfaceView?>(null) }
     // Which way the paper is tipped on screen; the gimbal sets it.
     var tilt by remember { mutableStateOf(Offset.Zero) }
@@ -183,6 +186,24 @@ fun CanvasScreen(dir: File, onExit: (Arrival?) -> Unit) {
         tool = t
         if (t != Tool.Eyedropper) brushTool = t
         if (panel == Panel.Brush || panel == Panel.Picker) panel = Panel.None
+    }
+
+    LaunchedEffect(dip) {
+        // A fresh brush starts full.
+        Native.setCharge(engine, if (dip) 1f else -1f)
+        info = info.copy(charge = if (dip) 1f else null)
+        // Dipping is how the brush gets its water, and a dry brush pushes wet
+        // paint by itself, so those two tools aren't needed.
+        if (dip && (tool == Tool.Water || tool == Tool.Push)) {
+            tool = Tool.Watercolor
+            brushTool = Tool.Watercolor
+            if (panel == Panel.Brush) panel = Panel.None
+        }
+    }
+
+    fun dipBrush() {
+        Native.setCharge(engine, 1f)
+        info = info.copy(charge = 1f)
     }
 
     fun setColor(p: Pigment) {
@@ -283,6 +304,15 @@ fun CanvasScreen(dir: File, onExit: (Arrival?) -> Unit) {
                             refresh()
                         }
                     }
+                    RoundButton(
+                        if (dip) CupIcon else Icons.Outlined.AllInclusive,
+                        if (dip) "Brush runs dry: dip it in the cup" else "Brush always wet",
+                        selected = dip,
+                    ) {
+                        dip = !dip
+                        app.settings.dip = dip
+                        Toast.makeText(context, if (dip) "Brush runs dry: dip it in the cup" else "Brush always wet", Toast.LENGTH_SHORT).show()
+                    }
                     GimbalButton(tilt, selected = gimbal || keepTilt) {
                         panel = Panel.None
                         gimbal = !gimbal
@@ -334,11 +364,20 @@ fun CanvasScreen(dir: File, onExit: (Arrival?) -> Unit) {
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 RoundButton(Icons.Outlined.Brush, "Watercolour", selected = tool == Tool.Watercolor, size = 48.dp) { selectTool(Tool.Watercolor) }
-                RoundButton(Icons.Outlined.WaterDrop, "Clear water", selected = tool == Tool.Water, size = 48.dp) { selectTool(Tool.Water) }
+                if (!dip) RoundButton(Icons.Outlined.WaterDrop, "Clear water", selected = tool == Tool.Water, size = 48.dp) { selectTool(Tool.Water) }
                 RoundButton(Icons.Outlined.HistoryEdu, "Ink", selected = tool == Tool.Ink, size = 48.dp) { selectTool(Tool.Ink) }
                 RoundButton(EraserIcon, "Eraser", selected = tool == Tool.Eraser || penEraser, size = 48.dp) { selectTool(Tool.Eraser) }
-                RoundButton(PushIcon, "Push", selected = tool == Tool.Push, size = 48.dp) { selectTool(Tool.Push) }
+                if (!dip) RoundButton(PushIcon, "Push", selected = tool == Tool.Push, size = 48.dp) { selectTool(Tool.Push) }
                 RoundButton(if (pickKind == PickKind.Wash) WashPickIcon else Icons.Outlined.Colorize, "Eyedropper", selected = tool == Tool.Eyedropper, size = 48.dp) { selectTool(Tool.Eyedropper) }
+            }
+
+            AnimatedVisibility(
+                dip,
+                enter = fadeIn(),
+                exit = fadeOut(),
+                modifier = Modifier.align(Alignment.BottomStart).navigationBarsPadding().padding(start = 12.dp, bottom = 12.dp),
+            ) {
+                WaterCup(info.charge ?: 1f, { dipBrush() })
             }
 
             // Panels.

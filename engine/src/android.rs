@@ -28,6 +28,7 @@ enum Cmd {
     View(View),
     Tilt(f32, f32),
     Brush(BrushSettings),
+    Charge(f32),
     Stroke(i32, Vec<InputPoint>),
     NewCanvas(u32, u32, u32, u32, u32, SyncSender<()>),
     Load(PathBuf, SyncSender<bool>),
@@ -155,6 +156,7 @@ fn handle_cmd(engine: &mut Engine, window: &mut Option<NativeWindow>, c: Cmd) ->
             }
         }
         Cmd::Brush(b) => engine.brush = b,
+        Cmd::Charge(v) => engine.set_charge(v),
         Cmd::Stroke(phase, pts) => engine.stroke(phase, &pts),
         Cmd::NewCanvas(w, h, kind, seed, home, reply) => {
             engine.new_canvas(w, h, kind, seed, home);
@@ -243,6 +245,7 @@ fn handle_cmd(engine: &mut Engine, window: &mut Option<NativeWindow>, c: Cmd) ->
                     "canUndo": c.can_undo(),
                     "canRedo": c.can_redo(),
                     "revision": c.revision,
+                    "charge": engine.charge,
                     "layers": c.layer_infos(),
                 })
                 .to_string(),
@@ -348,6 +351,13 @@ pub extern "system" fn Java_app_aqua_engine_Native_setBrush(mut env: JNIEnv, _c:
     if let Some(b) = BrushSettings::from_params(tool as u32, &floats(&mut env, &params)) {
         send(h, Cmd::Brush(b));
     }
+}
+
+/// Negative: brushes are always wet. Otherwise the watercolour brush now holds
+/// this much water and runs dry as it paints (1 = just dipped).
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_app_aqua_engine_Native_setCharge(_env: JNIEnv, _c: JClass, h: jlong, v: jfloat) {
+    send(h, Cmd::Charge(v));
 }
 
 /// phase: 0 begin, 1 move, 2 end, 3 cancel. pts: (x, y, pressure, tilt x, tilt y) in canvas pixels.

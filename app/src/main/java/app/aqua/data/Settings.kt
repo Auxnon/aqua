@@ -22,4 +22,9 @@ class Settings(context: Context) {
     var pickKind: PickKind
         get() = if (prefs.getString("pick_kind", null) == "classic") PickKind.Classic else PickKind.Wash
         set(v) = prefs.edit().putString("pick_kind", if (v == PickKind.Classic) "classic" else "wash").apply()
+
+    /** The brush runs out of water and has to be dipped in the cup (off: it is always wet). */
+    var dip: Boolean
+        get() = prefs.getBoolean("dip", false)
+        set(v) = prefs.edit().putBoolean("dip", v).apply()
 }

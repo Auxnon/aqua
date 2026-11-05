@@ -54,6 +54,8 @@ export class Engine {
   setView(v) { this.raw.set_view(v); this.kick(); }
   setTilt(x, y) { this.raw.set_tilt(x, y); this.kick(); }
   setBrush(tool, params) { this.raw.set_brush(tool, params); }
+  /** Negative: brushes are always wet. Otherwise the brush now holds this much water (1 = just dipped). */
+  setCharge(v) { this.raw.set_charge(v); }
   stroke(phase, pts) { this.raw.stroke(phase, pts); this.kick(); }
   newCanvas(w, h, paper, seed, home) { this.raw.new_canvas(w, h, paper, seed, home); this.kick(); }
   load(files) { this.raw.load(files); this.kick(); }

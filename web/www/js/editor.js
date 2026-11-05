@@ -33,6 +33,9 @@ export function createEditor(root, engine, canvas, { onExit }) {
   // How the eyedropper reads the canvas: 'wash' (whiter = thinner paint) or 'classic'.
   let pickKind = 'wash';
   let penEraser = false;
+  // The brush runs out of water and has to be dipped in the cup.
+  let dip = false;
+  getValue('dip').catch(() => null).then((v) => { if (v === true) setDip(true, false); });
   getValue('pickKind').catch(() => null).then((v) => { if (v === 'classic') { pickKind = v; view.pickWash = false; render(); } });
   let paint = presetPigments()[4].pigment;
   let ink = Pigment.fromHex('#111114');
@@ -80,12 +83,13 @@ export function createEditor(root, engine, canvas, { onExit }) {
   const gimbalButton = h('button', { class: 'round', title: 'Tip the paper', 'aria-label': 'Tip the paper', onclick: (e) => { e.stopPropagation(); toggleGimbal(); } }, gimbalIcon);
   const exportB = roundButton(I.share, 'Export PNG', () => exportPng());
   const layersB = roundButton(I.layers, 'Layers', () => setPanel(panel === 'layers' ? null : 'layers'));
+  const dipB = roundButton(I.endless, 'Brush always wet', () => setDip(!dip));
   const swatch = h('button', { class: 'swatch top', title: 'Palette', onclick: (e) => { e.stopPropagation(); setPanel(panel === 'palette' ? null : 'palette'); } });
 
   const topbar = h('div', { class: 'topbar' },
     h('div', { class: 'bar' }, back, undo, redo),
     h('div', { class: 'grow' }),
-    h('div', { class: 'bar' }, dry, gimbalButton, exportB, layersB, swatch),
+    h('div', { class: 'bar' }, dry, dipB, gimbalButton, exportB, layersB, swatch),
   );
 
   const sizeRail = railSlider('');
@@ -104,9 +108,34 @@ export function createEditor(root, engine, canvas, { onExit }) {
   const dock = h('div', { class: 'dock' }, tools.map((x) => x.b));
   dock.addEventListener('pointerdown', (e) => e.stopPropagation());
 
+  // The cup: rim, water, a highlight, ripples from a dip, and round the rim what
+  // the brush still holds.
+  const LEVEL = 2 * Math.PI * 26.2;
+  const cup = h('button', { class: 'cup', title: 'Water cup: dip the brush', 'aria-label': 'Water cup: dip the brush', hidden: true });
+  cup.innerHTML = `<svg viewBox="0 0 60 60" width="60" height="60">
+    <defs><radialGradient id="cupwater" cx="0.4" cy="0.4" r="0.65">
+      <stop offset="0" stop-color="#9cc9e8" stop-opacity="0.85"/><stop offset="1" stop-color="#cfe6f5" stop-opacity="0.7"/>
+    </radialGradient></defs>
+    <circle cx="30" cy="30" r="30" fill="#1a1a1e"/>
+    <circle cx="30" cy="30" r="25.8" fill="rgba(255,255,255,0.88)"/>
+    <circle cx="30" cy="30" r="23.4" fill="url(#cupwater)"/>
+    <circle cx="21" cy="20.4" r="4.8" fill="rgba(255,255,255,0.55)"/>
+    <circle class="ripple" cx="30" cy="30" r="23" fill="none" stroke="#fff" stroke-width="2"/>
+    <circle class="ripple late" cx="30" cy="30" r="23" fill="none" stroke="#fff" stroke-width="2"/>
+    <circle cx="30" cy="30" r="26.2" fill="none" stroke="rgba(154,152,148,0.25)" stroke-width="3.6"/>
+    <circle class="level" cx="30" cy="30" r="26.2" fill="none" stroke="#8fd3cb" stroke-width="3.6" stroke-linecap="round"
+      transform="rotate(-90 30 30)" stroke-dasharray="${LEVEL}" stroke-dashoffset="0"/>
+  </svg>`;
+  const level = cup.querySelector('.level');
+  // On touch down, as a brush is dipped, not on release.
+  cup.addEventListener('pointerdown', (e) => { e.stopPropagation(); e.preventDefault(); dipBrush(); });
+  cup.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); dipBrush(); } });
+  const toast = h('div', { class: 'pill hint toast' });
+  let toastTimer = 0;
+
   const panelHost = h('div', { class: 'panel-host' });
   const layers = layersPanel(engine, () => refresh());
-  const chrome = h('div', { class: 'chrome' }, topbar, rail, dock, panelHost);
+  const chrome = h('div', { class: 'chrome' }, topbar, rail, dock, cup, panelHost, toast);
   const hint = h('div', { class: 'pill hint' }, 'Release for gallery');
   const gimbalHost = h('div', { class: 'gimbal-host' });
   root.append(chrome, hint, gimbalHost);
@@ -137,6 +166,38 @@ export function createEditor(root, engine, canvas, { onExit }) {
     if (panel === 'brush' || panel === 'picker') setPanel(t === Tool.Eyedropper ? null : 'brush', true);
     view.eyedropper = t === Tool.Eyedropper;
     pushBrush();
+    render();
+  }
+
+  function say(text) {
+    toast.textContent = text;
+    toast.classList.add('shown');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toast.classList.remove('shown'), 1600);
+  }
+
+  /** Switches between brushes that are always wet and brushes that run dry and are dipped. */
+  function setDip(on, tell = true) {
+    dip = on;
+    // A fresh brush starts full.
+    engine.setCharge(on ? 1 : -1);
+    info = { ...info, charge: on ? 1 : null };
+    // Dipping is how the brush gets its water, and a dry brush pushes wet
+    // paint by itself, so those two tools aren't needed.
+    if (on && (tool === Tool.Water || tool === Tool.Push)) selectTool(Tool.Watercolor);
+    if (tell) {
+      setValue('dip', on).catch(() => {});
+      say(on ? 'Brush runs dry: dip it in the cup' : 'Brush always wet');
+    }
+    render();
+  }
+
+  function dipBrush() {
+    engine.setCharge(1);
+    info = { ...info, charge: 1 };
+    cup.classList.remove('dipped');
+    void cup.offsetWidth; // restart the ripple
+    cup.classList.add('dipped');
     render();
   }
 
@@ -231,7 +292,23 @@ export function createEditor(root, engine, canvas, { onExit }) {
     setSelected(gimbalButton, gimbalOpen || keepTilt);
     Pigment.paintSwatch(swatch, color());
     setSelected(swatch, panel === 'palette');
-    for (const { t, b: btn } of tools) setSelected(btn, t === tool || (t === Tool.Eraser && penEraser));
+    for (const { t, b: btn } of tools) {
+      setSelected(btn, t === tool || (t === Tool.Eraser && penEraser));
+      btn.hidden = dip && (t === Tool.Water || t === Tool.Push);
+    }
+    if (dipB.dataset.dip !== String(dip)) {
+      dipB.dataset.dip = String(dip);
+      dipB.replaceChildren(icon(dip ? I.cup : I.endless, 22));
+      const label = dip ? 'Brush runs dry: dip it in the cup' : 'Brush always wet';
+      dipB.title = label;
+      dipB.setAttribute('aria-label', label);
+    }
+    setSelected(dipB, dip);
+    cup.hidden = !dip;
+    const charge = Math.min(1, Math.max(0, info.charge ?? 1));
+    level.style.strokeDashoffset = `${LEVEL * (1 - charge)}`;
+    level.style.stroke = charge < 0.15 ? '#d08040' : '';
+    level.style.opacity = charge < 0.005 ? '0' : '1';
     const dropper = tools.find((x) => x.t === Tool.Eyedropper).b;
     if (dropper.dataset.kind !== pickKind) {
       dropper.dataset.kind = pickKind;
@@ -326,10 +403,11 @@ export function createEditor(root, engine, canvas, { onExit }) {
     } else if (k === '[' || k === ']') {
       setParams({ ...bp(), size: railToSize(sizeToRail(bp().size) + (k === ']' ? 0.04 : -0.04)) });
     } else if (k === 'b') selectTool(Tool.Watercolor);
-    else if (k === 'w') selectTool(Tool.Water);
+    else if (k === 'w' && !dip) selectTool(Tool.Water);
     else if (k === 'i') selectTool(Tool.Ink);
     else if (k === 'e') selectTool(Tool.Eraser);
-    else if (k === 'p') selectTool(Tool.Push);
+    else if (k === 'p' && !dip) selectTool(Tool.Push);
+    else if (k === 'd' && dip) dipBrush();
     else if (k === 'k') selectTool(Tool.Eyedropper);
     else if (k === '0') view.fit(true);
     else if (k === '=' || k === '+') view.zoomBy(1.25);

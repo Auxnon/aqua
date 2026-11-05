@@ -287,5 +287,26 @@ fn main() {
     }
     dry(&mut e);
     storage::export_png(e.canvas.as_mut().unwrap(), &out.join("tilt_brush.png")).unwrap();
+
+    // Dipping: the brush keeps its water from stroke to stroke and runs dry,
+    // fading into a dry brush that drags a wet wash (the red band) instead of
+    // painting. The last stroke is after a dip.
+    e.new_canvas(900, 760, 0, 7, 0);
+    e.brush = BrushSettings { tool: Tool::Watercolor, size: 30.0, pigment: from_srgb([0.8, 0.25, 0.25]), water: 1.0, ..Default::default() };
+    for k in 0..4 {
+        draw(&mut e, &(0..30).map(|i| InputPoint { x: 560.0 + k as f32 * 40.0, y: 60.0 + i as f32 * 20.0, pressure: 0.8, tilt: [0.0; 2] }).collect::<Vec<_>>());
+    }
+    e.brush = BrushSettings { pigment: from_srgb([0.15, 0.25, 0.65]), water: 0.6, ..e.brush };
+    e.set_charge(1.0);
+    for row in 0..7 {
+        if row == 6 {
+            e.set_charge(1.0);
+        }
+        let y = 70.0 + row as f32 * 100.0;
+        draw(&mut e, &(0..55).map(|i| InputPoint { x: 60.0 + i as f32 * 14.0, y, pressure: 0.8, tilt: [0.0; 2] }).collect::<Vec<_>>());
+        println!("dip: after stroke {row} the brush holds {:.2}", e.charge.unwrap());
+    }
+    dry(&mut e);
+    storage::export_png(e.canvas.as_mut().unwrap(), &out.join("dip.png")).unwrap();
     println!("wrote {}", out.display());
 }

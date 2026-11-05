@@ -77,6 +77,8 @@ data class CanvasInfo(
     val canUndo: Boolean = false,
     val canRedo: Boolean = false,
     val revision: Long = 0,
+    /** How much water the brush holds when it has to be dipped; null when it is always wet. */
+    val charge: Float? = null,
     val layers: List<LayerInfo> = emptyList(),
 ) {
     companion object {
@@ -106,6 +108,7 @@ data class CanvasInfo(
                 canUndo = o.getBoolean("canUndo"),
                 canRedo = o.getBoolean("canRedo"),
                 revision = o.getLong("revision"),
+                charge = if (o.isNull("charge")) null else o.getDouble("charge").toFloat(),
                 layers = layers,
             )
         }

@@ -64,6 +64,9 @@ pub struct Engine {
     pub presenter: Option<Presenter>,
     pub view: View,
     pub brush: BrushSettings,
+    /// None: brushes are always wet. Some: the watercolour brush's water, kept
+    /// between strokes; it runs dry until dipped (`set_charge(1.0)`).
+    pub charge: Option<f32>,
     last_frame: Option<Instant>,
     step_debt: f32,
     last_input: Option<Instant>,
@@ -81,6 +84,7 @@ impl Engine {
             presenter: None,
             view: View::default(),
             brush: BrushSettings::default(),
+            charge: None,
             last_frame: None,
             step_debt: 0.0,
             last_input: None,
@@ -160,6 +164,12 @@ impl Engine {
         self.last_frame = None;
     }
 
+    /// Negative: brushes are always wet. Otherwise the brush now holds this much
+    /// water (1 = just dipped).
+    pub fn set_charge(&mut self, v: f32) {
+        self.charge = (v >= 0.0).then(|| v.min(1.0));
+    }
+
     pub fn set_view(&mut self, v: View) {
         self.view = v;
         self.last_input = Some(Instant::now());
@@ -173,11 +183,16 @@ impl Engine {
             _ => {
                 for (i, p) in pts.iter().enumerate() {
                     if phase == 0 && i == 0 {
-                        c.begin_stroke(self.brush, *p);
+                        let charge = if self.brush.tool == crate::brush::Tool::Watercolor { self.charge } else { None };
+                        c.begin_stroke(BrushSettings { charge, ..self.brush }, *p);
                     } else {
                         c.stroke_to(*p);
                     }
                 }
+                if self.charge.is_some() && self.brush.tool == crate::brush::Tool::Watercolor
+                    && let Some(left) = c.stroke_charge() {
+                        self.charge = Some(left);
+                    }
                 if phase == 2 {
                     c.end_stroke(pts.last().copied());
                 }

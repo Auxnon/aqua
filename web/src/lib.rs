@@ -68,6 +68,12 @@ impl AquaEngine {
         }
     }
 
+    /// Negative: brushes are always wet. Otherwise the watercolour brush now
+    /// holds this much water and runs dry as it paints (1 = just dipped).
+    pub fn set_charge(&self, v: f32) {
+        self.engine.borrow_mut().set_charge(v);
+    }
+
     /// phase: 0 begin, 1 move, 2 end, 3 cancel; points are (x, y, pressure, tilt x, tilt y) in canvas pixels.
     pub fn stroke(&self, phase: i32, pts: &[f32]) {
         let p = InputPoint::parse(pts);
@@ -193,6 +199,7 @@ impl AquaEngine {
                 "canUndo": c.can_undo(),
                 "canRedo": c.can_redo(),
                 "revision": c.revision,
+                "charge": e.charge,
                 "layers": c.layer_infos(),
             })
             .to_string(),

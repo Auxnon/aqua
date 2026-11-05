@@ -52,6 +52,10 @@ pub struct BrushSettings {
     pub pressure_size: f32,
     pub pressure_flow: f32,
     pub smoothing: f32,
+    /// Watercolour only. None: the brush is freshly loaded with water for every
+    /// stroke. Some: how much water it still holds (0..1), carried from stroke
+    /// to stroke; it runs dry and has to be dipped (see `Engine::charge`).
+    pub charge: Option<f32>,
 }
 
 impl Default for BrushSettings {
@@ -71,6 +75,7 @@ impl Default for BrushSettings {
             pressure_size: 0.6,
             pressure_flow: 0.5,
             smoothing: 0.3,
+            charge: None,
         }
     }
 }
@@ -98,6 +103,7 @@ impl BrushSettings {
             smoothing: p[13],
             splatter: p[14],
             tilt: p.get(15).copied().unwrap_or(0.7),
+            charge: None,
         })
     }
 }
@@ -200,7 +206,7 @@ impl Stroke {
             smoothed: p,
             last: p,
             carry: 0.0,
-            water_res: 1.0,
+            water_res: settings.charge.unwrap_or(1.0).clamp(0.0, 1.0),
             paint_res: 1.0,
             dir: [1.0, 0.0],
             started: false,
@@ -210,6 +216,16 @@ impl Stroke {
             flick: 0.0,
             rng: seed.wrapping_mul(747796405).wrapping_add(2891336453) | 1,
         }
+    }
+
+    /// How much water the brush still holds (0..1).
+    pub fn charge(&self) -> f32 {
+        self.water_res
+    }
+
+    /// True when the brush carries its water from stroke to stroke.
+    fn dipped(&self) -> bool {
+        self.settings.charge.is_some() && self.settings.tool == Tool::Watercolor
     }
 
     fn spacing(&self, radius: f32) -> f32 {
@@ -283,7 +299,8 @@ impl Stroke {
         // The blot widens a little; most of the spread is the extra water running
         // outwards in the simulation, which gives it a ragged, wet edge.
         let grow = 1.0 + (self.dwell * (0.1 + 0.3 * pr)).min(0.35);
-        self.water_res *= (-dt * 0.12).exp();
+        // A brush that has to be dipped drains into the paper while it rests.
+        self.water_res *= (-dt * if self.dipped() { 0.5 } else { 0.12 }).exp();
         self.paint_res *= (-dt * 0.09).exp();
         self.emit_with(p, 0.0, dt * rate, grow, 2.5, out);
     }
@@ -484,7 +501,8 @@ impl Stroke {
         let angle = self.dir[1].atan2(self.dir[0]);
 
         // The reservoir empties with distance; more water lets a stroke go further.
-        let reach = s.size * (25.0 + 90.0 * s.water);
+        // A brush that has to be dipped holds a few strokes' worth.
+        let reach = s.size * if self.dipped() { 10.0 + 40.0 * s.water } else { 25.0 + 90.0 * s.water };
         let decay = (-step / reach).exp();
         self.water_res *= decay;
         self.paint_res *= (-step / (reach * 1.4)).exp();
@@ -500,9 +518,22 @@ impl Stroke {
         match s.tool {
             Tool::Watercolor => {
                 let water = s.water * self.water_res;
-                let amt = s.load * self.paint_res * flow * density * 1.2;
+                // A brush running dry lets go of less and less paint, then none:
+                // it is a dry brush that drags the wet paint it passes over.
+                let pull = if self.dipped() { smoothstep(0.05, 0.4, self.water_res) } else { 1.0 };
+                if pull < 1.0 && step > 0.0 {
+                    let mut dry = dab;
+                    dry.shape[3] = (0.6 * (1.0 - pull)).clamp(0.0, 1.0);
+                    dry.water_push = [0.0, self.dir[0] * radius * 0.5, self.dir[1] * radius * 0.5, 0.0];
+                    dry.ink = [1.0 * (1.0 - pull) * density, 0.0, 0.0, 0.0];
+                    out.push((DabKind::Push, dry));
+                }
+                if pull <= 0.0 {
+                    return;
+                }
+                let amt = s.load * self.paint_res * flow * density * 1.2 * pull;
                 dab.water_push = [
-                    (0.15 + water) * 0.9 * flow * density * soak,
+                    (0.15 * pull + water) * 0.9 * flow * density * soak,
                     self.dir[0] * 0.06 * water * density,
                     self.dir[1] * 0.06 * water * density,
                     (1.0 - water * 1.6).clamp(0.0, 1.0) * 0.9,
@@ -550,6 +581,11 @@ impl Stroke {
     }
 }
 
+fn smoothstep(a: f32, b: f32, x: f32) -> f32 {
+    let t = ((x - a) / (b - a)).clamp(0.0, 1.0);
+    t * t * (3.0 - 2.0 * t)
+}
+
 /// Splits ink between permanent (pen) and wet (India ink, carrying its own water
 /// so it can feather) according to `bleed`. `water` scales the ink's own water.
 fn push_ink(dab: Dab, ink: Pigment, bleed: f32, water: f32, out: &mut Vec<(DabKind, Dab)>) {
@@ -577,6 +613,23 @@ mod tests {
         assert_eq!(p.len(), 2);
         assert_eq!((p[0].x, p[0].y, p[0].pressure, p[0].tilt), (1.0, 2.0, 0.5, [0.3, -0.4]));
         assert_eq!((p[1].x, p[1].tilt), (5.0, [0.0, 0.0]));
+    }
+
+    #[test]
+    fn a_dipped_brush_runs_dry_and_keeps_its_charge() {
+        let s = BrushSettings { charge: Some(1.0), ..Default::default() };
+        let mut st = Stroke::new(s, 1);
+        let mut out = Vec::new();
+        for i in 0..400 {
+            st.add(InputPoint { x: i as f32 * 10.0, y: 0.0, pressure: 1.0, ..Default::default() }, &mut out);
+        }
+        assert!(st.charge() < 0.05, "{}", st.charge());
+        let last = out.iter().rev().find(|(k, _)| *k == DabKind::Push);
+        assert!(last.is_some(), "a dry brush pushes");
+        assert!(!out.iter().rev().take(5).any(|(k, _)| *k == DabKind::Wet), "and lays nothing down");
+        // An endless brush starts every stroke full.
+        let st = Stroke::new(BrushSettings::default(), 1);
+        assert_eq!(st.charge(), 1.0);
     }
 
     #[test]

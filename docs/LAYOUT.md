@@ -26,7 +26,7 @@ zones.
 
 ```
 ┌──────────────────────────────────────────────┐
-│ (← ↶ ↷)                    (dry ◎ ⇪ ≣ ●)     │  top bar: two pill groups
+│ (← ↶ ↷)                  (dry ∞ ◎ ⇪ ≣ ●)     │  top bar: two pill groups
 │                                   ┌───────┐  │
 │ ┃                                 │ panel │  │  panels drop from the top right
 │ ┃ size                            └───────┘  │
@@ -34,17 +34,19 @@ zones.
 │ ┃ water / bleed / strength                   │  side rail, vertically centred
 │                                              │
 │                [ brush] panel                │  brush panel sits above the dock
-│  (brush · water · ink · eraser · push · pick)│  tool dock, bottom centre
+│◯ (brush · water · ink · eraser · push · pick)│  cup (dip mode) · tool dock
 └──────────────────────────────────────────────┘
 ```
 
 - **Top left: navigation and history.** Back to the gallery, undo, redo.
 - **Top right: actions, in this order.**
   1. Dry layer now. Only shown while the active layer is wet.
-  2. Gimbal (tip the paper).
-  3. Export.
-  4. Layers.
-  5. The current colour as a swatch, which opens the palette.
+  2. Brush water: always wet (∞, the default) or dip (a cup). The choice is
+     kept between sessions.
+  3. Gimbal (tip the paper).
+  4. Export.
+  5. Layers.
+  6. The current colour as a swatch, which opens the palette.
 - **Left rail.** Brush size on a log scale, then the current tool's main
   control: water for the watercolour and water brushes, bleed for ink, strength
   for the eraser and push. Rail drags are relative, so grabbing a slider never makes it
@@ -55,6 +57,13 @@ zones.
 - **Push** is a dry brush. It lays nothing down; it drags standing water, and
   the paint and wet ink in it, along the stroke, and can pull a wash out over
   dry paper. On dry paper it does nothing.
+- **Dip mode.** The watercolour brush keeps its water from stroke to stroke
+  and runs dry: strokes thin out, break into dry-brush texture and stop
+  laying paint, and a dry brush drags any wet paint it passes over like Push.
+  Touching the water cup (bottom left, a cup seen from above) fills it again;
+  the ring round its rim shows what the brush holds and turns orange when
+  nearly dry. Clear water and Push leave the dock in this mode (W and P do
+  nothing; D dips on the web). Ink and the eraser are unaffected.
 - **Eyedropper kinds.** *Wash* (the default) reads the paint itself under the
   point, summed over the visible layers, the same way the palette's Pick reads
   the tray: a pale wash picks up as a thinned paint, and bare paper picks up

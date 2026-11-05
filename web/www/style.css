@@ -320,6 +320,33 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
   border-radius: 16px;
 }
 .editor.overview-hint:not(.exiting) .hint { opacity: 1; }
+.toast { bottom: calc(84px + env(safe-area-inset-bottom)); }
+.toast.shown { opacity: 1; }
+
+/* The water cup, seen from above: touching it dips the brush. */
+.cup {
+  position: absolute;
+  left: 12px;
+  bottom: calc(12px + env(safe-area-inset-bottom));
+  width: 60px;
+  height: 60px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  cursor: pointer;
+  touch-action: none;
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.35));
+}
+.cup svg { display: block; }
+.cup .level { transition: stroke-dashoffset 250ms, stroke 250ms; }
+.cup .ripple { opacity: 0; transform-origin: 30px 30px; }
+.cup.dipped .ripple { animation: ripple 700ms linear; }
+.cup.dipped .ripple.late { animation-delay: 200ms; animation-duration: 500ms; }
+@keyframes ripple {
+  from { opacity: 0.85; transform: scale(0.05); }
+  to { opacity: 0; transform: scale(1); }
+}
 
 /* The gimbal: a modal over the middle of the canvas. */
 .gimbal-host { position: absolute; inset: 0; pointer-events: none; }

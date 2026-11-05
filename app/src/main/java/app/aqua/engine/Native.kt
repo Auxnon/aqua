@@ -22,6 +22,12 @@ object Native {
     /** See [BrushParams.toArray] for the layout. */
     @JvmStatic external fun setBrush(handle: Long, tool: Int, params: FloatArray)
 
+    /**
+     * Negative: brushes are always wet. Otherwise the watercolour brush now holds
+     * this much water and runs dry as it paints (1 = just dipped).
+     */
+    @JvmStatic external fun setCharge(handle: Long, charge: Float)
+
     /** phase: 0 begin, 1 move, 2 end, 3 cancel; points are (x, y, pressure) in canvas pixels. */
     @JvmStatic external fun stroke(handle: Long, phase: Int, points: FloatArray)
 

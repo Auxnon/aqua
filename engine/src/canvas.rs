@@ -819,6 +819,11 @@ impl Canvas {
         }
     }
 
+    /// How much water the brush of the stroke in progress still holds.
+    pub fn stroke_charge(&self) -> Option<f32> {
+        self.stroke.as_ref().map(|s| s.charge())
+    }
+
     pub fn stroking(&self) -> bool {
         self.stroke.is_some()
     }
