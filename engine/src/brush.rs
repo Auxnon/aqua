@@ -504,9 +504,10 @@ impl Stroke {
         // The reservoir empties with distance; more water lets a stroke go further.
         // A brush that has to be dipped holds a few strokes' worth; a dip pen
         // writes a line or two (more with a bigger nib, less with more load).
+        // A big brush holds more, but much less than in proportion to its size.
         let reach = match (self.dipped(), s.tool) {
-            (true, Tool::Ink) => (1400.0 + 160.0 * s.size) * (1.3 - 0.5 * s.load),
-            (true, _) => s.size * (10.0 + 40.0 * s.water),
+            (true, Tool::Ink) => (1400.0 + 160.0 * s.size) * (1.3 - 0.5 * s.load) * big_brush_holds(s.size),
+            (true, _) => s.size * (10.0 + 40.0 * s.water) * big_brush_holds(s.size),
             _ => s.size * (25.0 + 90.0 * s.water),
         };
         let decay = (-step / reach).exp();
@@ -599,6 +600,14 @@ impl Stroke {
     }
 }
 
+/// How much of its size's worth a brush that has to be dipped holds: all of
+/// it for a fine brush, easing off on a log scale to a quarter at the largest
+/// size (300 px).
+fn big_brush_holds(size: f32) -> f32 {
+    let t = (size.max(1.0).ln() / 300f32.ln()).clamp(0.0, 1.0);
+    1.0 - 0.75 * t * t
+}
+
 fn smoothstep(a: f32, b: f32, x: f32) -> f32 {
     let t = ((x - a) / (b - a)).clamp(0.0, 1.0);
     t * t * (3.0 - 2.0 * t)
@@ -648,6 +657,13 @@ mod tests {
         // An endless brush starts every stroke full.
         let st = Stroke::new(BrushSettings::default(), 1);
         assert_eq!(st.charge(), 1.0);
+    }
+
+    #[test]
+    fn big_brushes_hold_less_than_their_size_would_say() {
+        assert!(big_brush_holds(1.0) == 1.0 && big_brush_holds(3.0) > 0.95);
+        assert!((big_brush_holds(300.0) - 0.25).abs() < 1e-4);
+        assert!(big_brush_holds(28.0) > 0.7);
     }
 
     #[test]
