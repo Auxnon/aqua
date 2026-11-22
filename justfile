@@ -34,10 +34,13 @@ tag version:
     [[ "$v" =~ ^v[0-9]+\.[0-9]+(\.[0-9]+)?$ ]] || { echo "version is MAJOR.MINOR or MAJOR.MINOR.PATCH, e.g. 0.2"; exit 1; }
     [ -z "$(git status --porcelain)" ] || { echo "commit or stash your changes first"; exit 1; }
     git tag -a "$v" -m "Aqua $v"
+    # A failed build takes the tag back off.
+    trap 'git tag -d "$v" >/dev/null' ERR
     ./gradlew -Djava.io.tmpdir="${TMPDIR:-/tmp}" assembleRelease
     mkdir -p dist
     cp app/build/outputs/apk/release/app-release.apk "dist/aqua-$v.apk"
     git push origin "$v"
+    trap - ERR
     gh release create "$v" "dist/aqua-$v.apk" --title "Aqua $v" --generate-notes
 
 # Run the engine's unit tests on the desktop GPU
