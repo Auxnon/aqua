@@ -568,9 +568,16 @@ impl Canvas {
     }
 
     fn undo_budget(w: u32, h: u32) -> u64 {
-        // Enough for a few dozen typical strokes, never less than ~4 full-layer snapshots.
+        // Enough for many dozens of typical strokes, never less than ~8 full-layer
+        // snapshots: twice what it was. No more than a fifth of the device's memory,
+        // but never less than the old budget (4 snapshots, at least 512 MB).
         let layer = w as u64 * h as u64 * 8 * 5;
-        (layer * 4).max(512 << 20)
+        let floor = (layer * 4).max(512 << 20);
+        let want = (layer * 8).max(1 << 30);
+        match system_memory() {
+            Some(total) => want.min(total / 5).max(floor),
+            None => want,
+        }
     }
 
     pub fn gpu(&self) -> &Arc<Gpu> {
@@ -1615,6 +1622,18 @@ fn share_push(dabs: &[(DabKind, Dab)], raw: &mut [Dab]) {
         raw[i].shape[3] /= n;
         raw[i].ink[0] /= n;
     }
+}
+
+/// Total memory, where the system says (Linux and Android).
+fn system_memory() -> Option<u64> {
+    #[cfg(any(target_os = "linux", target_os = "android"))]
+    {
+        let info = std::fs::read_to_string("/proc/meminfo").ok()?;
+        let kb: u64 = info.lines().find(|l| l.starts_with("MemTotal:"))?.split_whitespace().nth(1)?.parse().ok()?;
+        Some(kb * 1024)
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "android")))]
+    None
 }
 
 pub fn tv(t: &Tex) -> wgpu::BindingResource<'_> {

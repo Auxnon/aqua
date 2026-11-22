@@ -1,0 +1,16 @@
+# A systemd user service for the Aqua sync daemon.
+#   just sync-install        (builds it, installs this unit and starts it)
+# Paintings land in ~/.local/share/aqua/paintings, the desktop app's gallery.
+# For a key, put AQUA_SYNC_KEY=... in ~/.config/aqua/sync.env.
+[Unit]
+Description=Aqua sync daemon: keeps paintings pushed from the Aqua apps
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+EnvironmentFile=-%h/.config/aqua/sync.env
+ExecStart=%h/.cargo/bin/aqua-sync
+Restart=on-failure
+
+[Install]
+WantedBy=default.target

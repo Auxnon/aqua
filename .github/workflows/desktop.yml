@@ -1,0 +1,43 @@
+# Builds the desktop app (Linux AppImage, macOS .app/.dmg) and the sync daemon.
+name: desktop
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    tags: ["v*"]
+    paths: ["engine/**", "desktop/**", "sync/**", ".github/workflows/desktop.yml"]
+
+jobs:
+  linux:
+    # The oldest supported runner, so the AppImage runs on older glibc too.
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: sudo apt-get update && sudo apt-get install -y libfuse2
+      - name: AppImage
+        run: desktop/package/appimage.sh
+      - name: Sync daemon
+        run: cd sync && cargo test --release && cargo build --release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aqua-linux
+          path: |
+            desktop/target/Aqua-x86_64.AppImage
+            sync/target/release/aqua-sync
+            sync/aqua-sync.service
+
+  macos:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin, x86_64-apple-darwin
+      - name: Aqua.app and Aqua.dmg
+        run: desktop/package/macos.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aqua-macos
+          path: desktop/target/Aqua.dmg

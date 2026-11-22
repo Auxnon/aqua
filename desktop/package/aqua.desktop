@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Aqua
+GenericName=Watercolour painting
+Comment=Paint with watercolour and ink
+Exec=aqua %F
+Icon=aqua
+Terminal=false
+Categories=Graphics;2DGraphics;RasterGraphics;
+StartupWMClass=aqua

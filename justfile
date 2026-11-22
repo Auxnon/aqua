@@ -46,6 +46,31 @@ web-build:
 web port="8080": web-build
     cd web/www && python3 -m http.server {{port}} --bind 127.0.0.1
 
+# Build and run the desktop app (Linux, macOS)
+desktop *args:
+    cd desktop && cargo run --release -- {{args}}
+
+# Build the desktop app as an AppImage (desktop/target/Aqua-<arch>.AppImage)
+appimage:
+    desktop/package/appimage.sh
+
+# Build Aqua.app and Aqua.dmg (on a Mac)
+macos-app:
+    desktop/package/macos.sh
+
+# Run the sync daemon in the foreground (paintings land in the desktop gallery)
+sync-daemon *args:
+    cd sync && cargo run --release -- {{args}}
+
+# Install the sync daemon as a systemd user service and start it (Linux)
+sync-install:
+    cargo install --path sync
+    mkdir -p ~/.config/systemd/user
+    cp sync/aqua-sync.service ~/.config/systemd/user/
+    systemctl --user daemon-reload
+    systemctl --user enable --now aqua-sync
+    @echo "aqua-sync is listening on port 7717. If a firewall is on, open it: sudo firewall-cmd --add-port=7717/tcp --permanent && sudo firewall-cmd --reload"
+
 # Show the app's log output
 logs:
     adb logcat -s aqua:V AndroidRuntime:E
@@ -56,4 +81,6 @@ clean:
     cd engine && cargo clean
     rm -rf app/src/main/jniLibs
     cd web && cargo clean
+    cd desktop && cargo clean
+    cd sync && cargo clean
     rm -rf web/www/pkg

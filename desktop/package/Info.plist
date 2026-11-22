@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleName</key><string>Aqua</string>
+  <key>CFBundleDisplayName</key><string>Aqua</string>
+  <key>CFBundleIdentifier</key><string>app.aqua.desktop</string>
+  <key>CFBundleExecutable</key><string>aqua</string>
+  <key>CFBundleIconFile</key><string>aqua</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleVersion</key><string>@VERSION@</string>
+  <key>CFBundleShortVersionString</key><string>@VERSION@</string>
+  <key>LSMinimumSystemVersion</key><string>11.0</string>
+  <key>LSApplicationCategoryType</key><string>public.app-category.graphics-design</string>
+  <key>NSHighResolutionCapable</key><true/>
+  <key>NSLocalNetworkUsageDescription</key><string>Aqua sends your paintings to the aqua-sync computers you name.</string>
+</dict>
+</plist>

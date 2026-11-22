@@ -1,0 +1,24 @@
+[package]
+name = "aqua_sync"
+version = "0.1.0"
+edition = "2024"
+description = "The Aqua sync daemon: receives paintings pushed by the apps and keeps them as files. Also the protocol, for the desktop app."
+publish = false
+
+[lib]
+name = "aqua_sync"
+path = "src/lib.rs"
+
+[[bin]]
+name = "aqua-sync"
+path = "src/main.rs"
+
+# No dependencies: the daemon is meant to be tiny and to build anywhere.
+[dependencies]
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

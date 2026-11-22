@@ -261,6 +261,16 @@ impl Engine {
 
     /// Steps the simulation by the elapsed wall time and presents. Returns `wants_frame()`.
     pub fn frame(&mut self) -> bool {
+        if self.advance() {
+            self.present();
+        }
+        self.end_frame()
+    }
+
+    /// Steps the simulation by the elapsed wall time. True if the picture changed.
+    /// A host that draws its own controls over the painting calls this, then
+    /// [`present_with`](Self::present_with), then [`end_frame`](Self::end_frame).
+    pub fn advance(&mut self) -> bool {
         let now = Instant::now();
         let dt = self.last_frame.map_or(1.0 / 60.0, |t| (now - t).as_secs_f32()).min(0.1);
         self.last_frame = Some(now);
@@ -278,9 +288,11 @@ impl Engine {
                 changed = true;
             }
         }
-        if changed {
-            self.present();
-        }
+        changed
+    }
+
+    /// Returns `wants_frame()`, and forgets the frame time when nothing more is coming.
+    pub fn end_frame(&mut self) -> bool {
         let more = self.wants_frame();
         if !more {
             self.last_frame = None;
@@ -288,7 +300,17 @@ impl Engine {
         more
     }
 
+    /// The surface's pixel format, once one is attached.
+    pub fn surface_format(&self) -> Option<wgpu::TextureFormat> {
+        self.presenter.as_ref().map(|p| p.config.format)
+    }
+
     fn present(&mut self) {
+        self.present_with(|_, _| {});
+    }
+
+    /// Draws the painting, then whatever `overlay` records into the same frame, and presents.
+    pub fn present_with(&mut self, overlay: impl FnOnce(&mut wgpu::CommandEncoder, &wgpu::TextureView)) {
         let Some(p) = self.presenter.as_mut() else { return };
         let frame = match p.surface.get_current_texture() {
             wgpu::CurrentSurfaceTexture::Success(t) | wgpu::CurrentSurfaceTexture::Suboptimal(t) => t,
@@ -300,6 +322,15 @@ impl Engine {
         };
         self.needs_present = false;
         let target = frame.texture.create_view(&wgpu::TextureViewDescriptor::default());
+        self.draw_to(&target, overlay);
+        self.gpu.queue.present(frame);
+    }
+
+    /// Draws what [`present_with`](Self::present_with) would into `target`, a
+    /// texture of the surface's format and size (for a screenshot).
+    pub fn draw_to(&mut self, target: &wgpu::TextureView, overlay: impl FnOnce(&mut wgpu::CommandEncoder, &wgpu::TextureView)) {
+        let Some(p) = self.presenter.as_mut() else { return };
+        let target = target.clone();
         let mut enc = self.gpu.device.create_command_encoder(&Default::default());
         // The app's background (#09090B), in linear light: the shader works in
         // linear and encodes to sRGB on the way out, like an sRGB surface does.
@@ -337,8 +368,8 @@ impl Engine {
                 let _ = enc.begin_render_pass(&pass_desc(&atts));
             }
         }
+        overlay(&mut enc, &target);
         self.gpu.queue.submit([enc.finish()]);
-        self.gpu.queue.present(frame);
     }
 }
 

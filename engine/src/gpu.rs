@@ -14,9 +14,23 @@ pub struct Gpu {
 
 impl Gpu {
     pub fn new_instance() -> wgpu::Instance {
-        let mut desc = wgpu::InstanceDescriptor::new_without_display_handle();
-        desc.backends = if cfg!(target_arch = "wasm32") { wgpu::Backends::BROWSER_WEBGPU } else { wgpu::Backends::VULKAN | wgpu::Backends::GL };
-        wgpu::Instance::new(desc)
+        wgpu::Instance::new(Self::instance_desc(wgpu::InstanceDescriptor::new_without_display_handle()))
+    }
+
+    /// For a desktop window: GL (the fallback where Vulkan is missing) needs the display.
+    pub fn new_instance_with_display(display: Box<dyn wgpu::wgt::WgpuHasDisplayHandle>) -> wgpu::Instance {
+        wgpu::Instance::new(Self::instance_desc(wgpu::InstanceDescriptor::new_with_display_handle(display)))
+    }
+
+    fn instance_desc(mut desc: wgpu::InstanceDescriptor) -> wgpu::InstanceDescriptor {
+        desc.backends = if cfg!(target_arch = "wasm32") {
+            wgpu::Backends::BROWSER_WEBGPU
+        } else if cfg!(target_vendor = "apple") {
+            wgpu::Backends::METAL
+        } else {
+            wgpu::Backends::VULKAN | wgpu::Backends::GL
+        };
+        desc
     }
 
     /// Picks an adapter (preferring Vulkan) able to present to `surface`, if given.
@@ -47,7 +61,12 @@ impl Gpu {
             }
         }
         let adapter = adapter?;
-        log::info!("aqua: using adapter {:?}", adapter.get_info());
+        let info = adapter.get_info();
+        log::info!("aqua: using adapter {info:?}");
+        if info.device_type == wgpu::DeviceType::Cpu {
+            // Paint simulated on the CPU slows down as more of the page is wet.
+            log::warn!("aqua: no usable GPU driver, painting with the software renderer {} (slow)", info.name);
+        }
 
         let alimits = adapter.limits();
         let mut limits = wgpu::Limits::downlevel_defaults();
