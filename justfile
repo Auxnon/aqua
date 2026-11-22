@@ -55,6 +55,10 @@ paint-test out="/tmp/aqua_out":
 brush-test out="/tmp/aqua_brush":
     cd engine && cargo run --release --example brush_test -- {{out}}
 
+# Dark paint worked over while wet, plus a map of where settled pigment piles up
+dark-test out="${TMPDIR:-/tmp}/aqua_dark":
+    cd engine && cargo run --release --example dark_test -- {{out}}
+
 # Time the simulation at 2048×2048
 bench:
     cd engine && cargo run --release --example bench

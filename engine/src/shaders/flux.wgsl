@@ -11,18 +11,6 @@ fn surface(q: vec2<i32>) -> vec2<f32> {
     return vec2<f32>(w.x + P.paper_influence * textureLoad(paper, q, 0).r, w.y);
 }
 
-fn vnoise(x: vec2<f32>) -> f32 {
-    let i = floor(x);
-    let f = fract(x);
-    let u = f * f * (3.0 - 2.0 * f);
-    let c = vec2<i32>(i);
-    return mix(
-        mix(hash12(c), hash12(c + vec2<i32>(1, 0)), u.x),
-        mix(hash12(c + vec2<i32>(0, 1)), hash12(c + vec2<i32>(1, 1)), u.x),
-        u.y,
-    );
-}
-
 // How strongly the layer's Flow setting acts on water this deep. Ordinary strokes
 // are shallower than the onset and behave exactly as with Flow at zero.
 fn flood(h: f32) -> f32 {

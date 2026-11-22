@@ -94,7 +94,28 @@ fn fibre_conductance(paper: vec4<f32>, d: vec2<i32>) -> f32 {
     return mix(1.0, 0.15 + 1.85 * align * align, paper.b) * (0.6 + 0.8 * paper.a);
 }
 
+// An integer hash (PCG-style) in 0..1. The usual fract(sin(...)) loses its
+// randomness for large arguments on phone GPUs and turns into visible patterns.
 fn hash12(p: vec2<i32>) -> f32 {
-    let q = vec2<f32>(p);
-    return fract(sin(dot(q, vec2<f32>(12.9898, 78.233))) * 43758.5453);
+    var v = bitcast<vec2<u32>>(p) * 1664525u + 1013904223u;
+    v.x += v.y * 1664525u;
+    v.y += v.x * 1664525u;
+    v = v ^ (v >> vec2<u32>(16u));
+    v.x += v.y * 1664525u;
+    v.y += v.x * 1664525u;
+    v = v ^ (v >> vec2<u32>(16u));
+    return f32(v.y >> 8u) * (1.0 / 16777216.0);
+}
+
+// Smooth value noise: no edges between lattice cells.
+fn vnoise(x: vec2<f32>) -> f32 {
+    let i = floor(x);
+    let f = fract(x);
+    let u = f * f * (3.0 - 2.0 * f);
+    let c = vec2<i32>(i);
+    return mix(
+        mix(hash12(c), hash12(c + vec2<i32>(1, 0)), u.x),
+        mix(hash12(c + vec2<i32>(0, 1)), hash12(c + vec2<i32>(1, 1)), u.x),
+        u.y,
+    );
 }

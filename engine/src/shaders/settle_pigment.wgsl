@@ -86,8 +86,13 @@ fn main(@builtin(workgroup_id) wg: vec3<u32>, @builtin(local_invocation_id) li: 
     } else {
         let thin = 1.0 / (1.0 + 6.0 * h);
         let valley = 1.0 - pp.r;
-        // Heavy pigment particles collect in the paper's valleys and clump (flocculate).
-        let floc = mix(1.0, 0.3 + 1.4 * hash12(p / 2), clamp(P.granulation * 0.6, 0.0, 1.0));
+        // Heavy pigment particles collect in the paper's valleys and clump (flocculate):
+        // a smooth field a few cells across. Not per-cell (or per-block) noise: only
+        // suspended pigment moves, so every wet pass would pull cells that settle
+        // slowly further apart from their neighbours, into blocks.
+        let clump = vnoise(vec2<f32>(p) / 3.0 + vec2<f32>(517.0, 211.0)) * 0.6
+            + vnoise(vec2<f32>(p) / 1.4 + vec2<f32>(91.0, 733.0)) * 0.4;
+        let floc = mix(1.0, 0.6 + 0.8 * clump, clamp(P.granulation * 0.6, 0.0, 1.0));
         let gran = max(0.05, (1.0 + P.granulation * (2.0 * valley - 0.8)) * floc);
         let rd = clamp(P.deposit * P.dt * thin * gran, 0.0, 1.0);
         let rl = clamp(P.lift * P.dt * (h / (h + 0.4)) * (0.4 + pp.r) * (1.0 - P.staining), 0.0, 1.0);
