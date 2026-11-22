@@ -52,6 +52,7 @@ fun RoundButton(
     selected: Boolean = false,
     enabled: Boolean = true,
     size: Dp = 44.dp,
+    tint: Color? = null,
     onClick: () -> Unit,
 ) {
     Box(
@@ -67,6 +68,7 @@ fun RoundButton(
             contentDescription = description,
             tint = when {
                 !enabled -> AquaColors.TextDim.copy(alpha = 0.35f)
+                tint != null -> tint
                 selected -> AquaColors.Accent
                 else -> AquaColors.Text
             },

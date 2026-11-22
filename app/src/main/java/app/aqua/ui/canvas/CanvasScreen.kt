@@ -15,6 +15,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -37,11 +38,15 @@ import androidx.compose.material.icons.outlined.Colorize
 import androidx.compose.material.icons.outlined.HistoryEdu
 import androidx.compose.material.icons.outlined.IosShare
 import androidx.compose.material.icons.outlined.Layers
+import androidx.compose.material.icons.outlined.Sync
+import androidx.compose.material.icons.outlined.Visibility
+import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material.icons.outlined.WaterDrop
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -86,6 +91,9 @@ import kotlin.math.pow
 
 private const val MAX_BRUSH = 300f
 
+/** With sync on, a painting is saved (and pushed) once it has been left alone this long. */
+private const val SYNC_IDLE_MS = 20_000L
+
 private fun sizeToRail(s: Float) = (ln(s.coerceIn(1f, MAX_BRUSH)) / ln(MAX_BRUSH))
 private fun railToSize(v: Float) = MAX_BRUSH.pow(v).coerceIn(1f, MAX_BRUSH)
 
@@ -127,6 +135,13 @@ fun CanvasScreen(dir: File, onExit: (Arrival?) -> Unit) {
     val canKeepTilt = remember { hasTiltSensor(context) }
     // Phone tilt keeps steering the paper after the gimbal is closed.
     var keepTilt by remember { mutableStateOf(false) }
+    // Every control but one button to bring them back.
+    var hidden by remember { mutableStateOf(false) }
+    var syncOn by remember { mutableStateOf(app.settings.syncOn) }
+    var syncDialog by remember { mutableStateOf(false) }
+    val syncStatus by app.sync.status.collectAsState()
+    // The revision last saved, so sync only pushes what changed.
+    var savedRevision by remember { mutableStateOf<Long?>(null) }
     // The controls fade away while pinching out to the gallery and while leaving.
     val chrome by animateFloatAsState(if (exiting || (overviewHint && pinchToGallery)) 0f else 1f, label = "chrome")
 
@@ -137,7 +152,26 @@ fun CanvasScreen(dir: File, onExit: (Arrival?) -> Unit) {
         }
     }
 
-    fun save() = Native.save(engine, dir.path)
+    /** Saves, and pushes the save to the sync daemons when sync is on. */
+    fun save(force: Boolean = false): Boolean {
+        val rev = info.revision
+        val ok = Native.save(engine, dir.path)
+        if (ok) {
+            savedRevision = rev
+            app.sync.push(dir, force)
+        }
+        return ok
+    }
+
+    // With sync on, a painting left alone for a while is saved and pushed, not
+    // only when leaving it.
+    LaunchedEffect(info.revision, info.width, syncOn) {
+        if (info.width == 0) return@LaunchedEffect
+        if (savedRevision == null) savedRevision = info.revision
+        if (!syncOn || info.revision == savedRevision) return@LaunchedEffect
+        delay(SYNC_IDLE_MS)
+        withContext(Dispatchers.IO) { save() }
+    }
 
     LaunchedEffect(Unit) {
         while (true) {
@@ -241,6 +275,7 @@ fun CanvasScreen(dir: File, onExit: (Arrival?) -> Unit) {
 
     BackHandler {
         when {
+            hidden -> hidden = false
             gimbal -> gimbal = false
             panel != Panel.None -> panel = Panel.None
             else -> leave()
@@ -290,27 +325,13 @@ fun CanvasScreen(dir: File, onExit: (Arrival?) -> Unit) {
             },
         )
 
+        AnimatedVisibility(!hidden, enter = fadeIn(), exit = fadeOut()) {
         Box(Modifier.fillMaxSize().graphicsLayer { alpha = chrome }) {
-            // Top bar.
-            Row(
-                Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 8.dp, vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Bar {
-                    RoundButton(Icons.AutoMirrored.Outlined.ArrowBack, "Gallery") { leave() }
-                    RoundButton(Icons.AutoMirrored.Outlined.Undo, "Undo", enabled = info.canUndo) { Native.undo(engine); refresh() }
-                    RoundButton(Icons.AutoMirrored.Outlined.Redo, "Redo", enabled = info.canRedo) { Native.redo(engine); refresh() }
-                }
-                Spacer(Modifier.weight(1f))
-                Bar {
-                    val activeWet = info.layers.getOrNull(info.active)?.wet == true
-                    AnimatedVisibility(activeWet, enter = fadeIn(), exit = fadeOut()) {
-                        RoundButton(Icons.Outlined.Air, "Dry layer now") {
-                            Native.layerOp(engine, LayerOp.DRY, info.active, 0f, null)
-                            refresh()
-                        }
-                    }
-                    RoundButton(
+            // Top bar. Actions that don't fit the screen's width go in the ⋮ menu.
+            BoxWithConstraints(Modifier.fillMaxWidth().statusBarsPadding()) {
+                val btn = if (maxWidth < 600.dp) 40.dp else 44.dp
+                val actions = listOf(
+                    iconAction(
                         if (dip) CupIcon else Icons.Outlined.AllInclusive,
                         if (dip) "Brush runs dry: dip it in the cup" else "Brush always wet",
                         selected = dip,
@@ -318,22 +339,57 @@ fun CanvasScreen(dir: File, onExit: (Arrival?) -> Unit) {
                         dip = !dip
                         app.settings.dip = dip
                         Toast.makeText(context, if (dip) "Brush runs dry: dip it in the cup" else "Brush always wet", Toast.LENGTH_SHORT).show()
-                    }
-                    GimbalButton(tilt, selected = gimbal || keepTilt) {
+                    },
+                    BarAction(
+                        "Tip the paper",
+                        selected = gimbal || keepTilt,
+                        menuIcon = { GimbalGlyph(tilt, if (gimbal || keepTilt || tilt != Offset.Zero) AquaColors.Accent else AquaColors.Text) },
+                        button = { s -> GimbalButton(tilt, selected = gimbal || keepTilt, size = s) { panel = Panel.None; gimbal = !gimbal } },
+                        onClick = { panel = Panel.None; gimbal = !gimbal },
+                    ),
+                    iconAction(Icons.Outlined.Sync, if (syncOn) "Sync: on" else "Sync", tint = syncTint(syncOn, syncStatus.primary, syncStatus.backup)) {
                         panel = Panel.None
-                        gimbal = !gimbal
-                    }
-                    RoundButton(Icons.Outlined.IosShare, "Export") {
+                        syncDialog = true
+                    },
+                    iconAction(Icons.Outlined.IosShare, "Export") {
                         scope.launch {
                             val ok = exportToGallery(context, engine)
                             Toast.makeText(context, if (ok) "Saved to Pictures/Aqua" else "Export failed", Toast.LENGTH_SHORT).show()
                         }
+                    },
+                    iconAction(Icons.Outlined.VisibilityOff, "Hide controls") {
+                        panel = Panel.None
+                        gimbal = false
+                        hidden = true
+                    },
+                )
+                // Back, undo, redo; dry, layers, paint and ⋮.
+                val slots = barSlots(maxWidth, btn, fixedButtons = 7)
+                val inline = if (slots >= actions.size) actions else actions.take(slots)
+                val overflow = actions.drop(inline.size)
+                Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Bar {
+                        RoundButton(Icons.AutoMirrored.Outlined.ArrowBack, "Gallery", size = btn) { leave() }
+                        RoundButton(Icons.AutoMirrored.Outlined.Undo, "Undo", enabled = info.canUndo, size = btn) { Native.undo(engine); refresh() }
+                        RoundButton(Icons.AutoMirrored.Outlined.Redo, "Redo", enabled = info.canRedo, size = btn) { Native.redo(engine); refresh() }
                     }
-                    RoundButton(Icons.Outlined.Layers, "Layers", selected = panel == Panel.Layers) {
-                        panel = if (panel == Panel.Layers) Panel.None else Panel.Layers
-                    }
-                    PigmentSwatch(color, Modifier.padding(horizontal = 6.dp), size = 32.dp, selected = panel == Panel.Palette) {
-                        panel = if (panel == Panel.Palette) Panel.None else Panel.Palette
+                    Spacer(Modifier.weight(1f))
+                    Bar {
+                        val activeWet = info.layers.getOrNull(info.active)?.wet == true
+                        AnimatedVisibility(activeWet, enter = fadeIn(), exit = fadeOut()) {
+                            RoundButton(Icons.Outlined.Air, "Dry layer now", size = btn) {
+                                Native.layerOp(engine, LayerOp.DRY, info.active, 0f, null)
+                                refresh()
+                            }
+                        }
+                        inline.forEach { it.button(btn) }
+                        RoundButton(Icons.Outlined.Layers, "Layers", selected = panel == Panel.Layers, size = btn) {
+                            panel = if (panel == Panel.Layers) Panel.None else Panel.Layers
+                        }
+                        PigmentSwatch(color, Modifier.padding(horizontal = (btn - 32.dp) / 2), size = 32.dp, selected = panel == Panel.Palette) {
+                            panel = if (panel == Panel.Palette) Panel.None else Panel.Palette
+                        }
+                        if (overflow.isNotEmpty()) MoreMenu(overflow, btn)
                     }
                 }
             }
@@ -406,6 +462,28 @@ fun CanvasScreen(dir: File, onExit: (Arrival?) -> Unit) {
                 )
                 Panel.None -> {}
             }
+        }
+        }
+
+        // With the controls hidden, the one way back to them.
+        AnimatedVisibility(
+            hidden && !exiting,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(8.dp),
+        ) {
+            Box(Modifier.clip(RoundedCornerShape(24.dp)).background(AquaColors.Panel.copy(alpha = 0.5f))) {
+                RoundButton(Icons.Outlined.Visibility, "Show controls", tint = AquaColors.Text.copy(alpha = 0.7f)) { hidden = false }
+            }
+        }
+
+        if (syncDialog) {
+            SyncDialog(
+                app.settings, app.sync,
+                onToggle = { syncOn = it },
+                onSyncNow = { scope.launch(Dispatchers.IO) { save(force = true) } },
+                onDismiss = { syncDialog = false },
+            )
         }
 
         AnimatedVisibility(gimbal && !exiting, enter = fadeIn(), exit = fadeOut()) {

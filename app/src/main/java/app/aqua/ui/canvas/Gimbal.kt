@@ -41,6 +41,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.aqua.ui.theme.AquaColors
@@ -70,11 +71,11 @@ private fun Offset.clampLength(): Offset {
  * tipped, accented while it isn't level.
  */
 @Composable
-fun GimbalButton(tilt: Offset, selected: Boolean, onClick: () -> Unit) {
+fun GimbalButton(tilt: Offset, selected: Boolean, size: Dp = 44.dp, onClick: () -> Unit) {
     val tipped = tilt != Offset.Zero
     Box(
         Modifier
-            .size(44.dp)
+            .size(size)
             .clip(CircleShape)
             .background(if (selected) AquaColors.Accent.copy(alpha = 0.22f) else Color.Transparent)
             .clickable(onClick = onClick),
@@ -91,6 +92,12 @@ fun GimbalButton(tilt: Offset, selected: Boolean, onClick: () -> Unit) {
  * A ring that leans with the tilt: a level ring foreshortened along the downhill
  * direction, and a dot that slides downhill.
  */
+/** The gimbal drawn as an icon, for a menu. */
+@Composable
+fun GimbalGlyph(tilt: Offset, tint: Color, size: Dp = 22.dp) {
+    Canvas(Modifier.size(size)) { drawGimbal(tilt, tint, strokeWidth = 1.6.dp.toPx(), dot = 2.6.dp.toPx(), axes = false) }
+}
+
 private fun DrawScope.drawGimbal(tilt: Offset, color: Color, strokeWidth: Float, dot: Float, axes: Boolean) {
     val r = size.minDimension / 2f - strokeWidth
     val c = center

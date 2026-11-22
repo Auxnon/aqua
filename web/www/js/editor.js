@@ -8,6 +8,8 @@ import { ACCENT, PhoneTilt, TEXT, drawGimbal, gimbalOverlay, gimbalSvg } from '.
 import { I } from './icons.js';
 import { brushPanel, layersPanel, palettePanel, pickerPanel } from './panels.js';
 import { getValue, setValue, writePainting } from './store.js';
+import { dialog } from './gallery.js';
+import { sync } from './sync.js';
 import { h, icon, railSlider, roundButton, setSelected } from './ui.js';
 
 const MAX_BRUSH = 300;
@@ -85,12 +87,49 @@ export function createEditor(root, engine, canvas, { onExit }) {
   const layersB = roundButton(I.layers, 'Layers', () => setPanel(panel === 'layers' ? null : 'layers'));
   const dipB = roundButton(I.endless, 'Brush always wet', () => setDip(!dip));
   const swatch = h('button', { class: 'swatch top', title: 'Palette', onclick: (e) => { e.stopPropagation(); setPanel(panel === 'palette' ? null : 'palette'); } });
+  const syncB = roundButton(I.sync, 'Sync', () => syncDialog());
+  const hideB = roundButton(I.eyeOff, 'Hide controls (H)', () => setHidden(true));
+  const moreB = roundButton(I.more, 'More', () => openMore());
+  const unhide = roundButton(I.eye, 'Show controls (H)', () => setHidden(false), { cls: 'unhide' });
 
+  // Actions that don't fit the window's width go in the ⋮ menu, in this order.
+  const actions = [
+    { b: dipB, label: () => dipB.title, icon: () => (dip ? I.cup : I.endless), run: () => setDip(!dip) },
+    { b: gimbalButton, label: () => 'Tip the paper', svg: () => { const g = gimbalSvg(20); drawGimbal(g, tilt, { color: TEXT, stroke: 1.6, dot: 2.6, axes: false }); return g; }, run: () => toggleGimbal() },
+    { b: syncB, label: () => (sync.settings.on ? 'Sync: on' : 'Sync'), icon: () => I.sync, run: () => syncDialog() },
+    { b: exportB, label: () => 'Export PNG', icon: () => I.share, run: () => exportPng() },
+    { b: hideB, label: () => 'Hide controls', icon: () => I.eyeOff, run: () => setHidden(true) },
+  ];
+  const actionBar = h('div', { class: 'bar' }, dry, ...actions.map((a) => a.b), layersB, swatch, moreB);
   const topbar = h('div', { class: 'topbar' },
     h('div', { class: 'bar' }, back, undo, redo),
     h('div', { class: 'grow' }),
-    h('div', { class: 'bar' }, dry, dipB, gimbalButton, exportB, layersB, swatch),
+    actionBar,
   );
+  let overflow = [];
+  /** Lays the bars out for the window's width: smaller buttons on a phone, the rest in the menu. */
+  function layoutBar() {
+    const w = root.clientWidth || innerWidth;
+    const btn = w < 600 ? 40 : 44;
+    topbar.style.setProperty('--btn', `${btn}px`);
+    for (const b of topbar.querySelectorAll('.round')) b.style.width = b.style.height = `${btn}px`;
+    // Back, undo, redo; dry, layers, paint and ⋮; and the bars' padding.
+    const slots = Math.max(0, Math.floor((w - 40 - btn * 7) / btn));
+    const inline = slots >= actions.length ? actions.length : slots;
+    actions.forEach((a, i) => { a.b.hidden = i >= inline; });
+    overflow = actions.slice(inline);
+    moreB.hidden = overflow.length === 0;
+  }
+  new ResizeObserver(() => layoutBar()).observe(root);
+  function openMore() {
+    const r = moreB.getBoundingClientRect();
+    const close = () => scrim.remove();
+    const m = h('div', { class: 'menu more', style: { right: `${Math.max(8, innerWidth - r.right)}px`, top: `${r.bottom + 6}px` } },
+      overflow.map((a) => h('button', { onclick: () => { close(); a.run(); } },
+        a.svg ? a.svg() : icon(a.icon(), 20), h('span', {}, a.label()))));
+    const scrim = h('div', { class: 'scrim clear', onpointerdown: (e) => { if (e.target === scrim) close(); } }, m);
+    document.body.append(scrim);
+  }
 
   const sizeRail = railSlider('');
   const mainRail = railSlider('', 120);
@@ -151,7 +190,62 @@ export function createEditor(root, engine, canvas, { onExit }) {
   const chrome = h('div', { class: 'chrome' }, topbar, rail, dock, cup, panelHost, toast);
   const hint = h('div', { class: 'pill hint' }, 'Release for gallery');
   const gimbalHost = h('div', { class: 'gimbal-host' });
-  root.append(chrome, hint, gimbalHost);
+  root.append(chrome, hint, gimbalHost, unhide);
+  layoutBar();
+
+  /** Hides every control but the one that brings them back. */
+  function setHidden(on) {
+    if (on) {
+      setPanel(null);
+      if (gimbalOpen) toggleGimbal();
+    }
+    root.classList.toggle('ui-hidden', on);
+  }
+
+  function syncDialog() {
+    setPanel(null);
+    const s = sync.settings;
+    const field = (label, value, placeholder) => {
+      const input = h('input', { class: 'field', value, placeholder, spellcheck: 'false', autocapitalize: 'off' });
+      return { input, el: h('label', { class: 'field-row' }, h('span', { class: 'caption' }, label), input) };
+    };
+    const on = h('input', { type: 'checkbox', ...(s.on ? { checked: true } : {}) });
+    const primary = field('Address', s.primary, '192.168.1.20');
+    const primaryState = h('div', { class: 'caption sync-state' });
+    const backup = field('Backup address', s.backup, 'optional');
+    const backupState = h('div', { class: 'caption sync-state' });
+    const key = field('Key', s.key, 'if the daemon has one');
+    const test = h('div', { class: 'caption' });
+    const store = () => sync.set({ on: on.checked, primary: primary.input.value.trim(), backup: backup.input.value.trim(), key: key.input.value.trim() });
+    on.addEventListener('change', () => store());
+    const show = (el, st, idle = '') => {
+      el.className = `caption sync-state ${st.state}`;
+      el.textContent = st.state === 'sending' ? 'Sending…'
+        : st.state === 'done' ? `Synced at ${new Date(st.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+        : st.state === 'failed' ? st.message : idle;
+    };
+    const paint = () => { show(primaryState, sync.status.primary); show(backupState, sync.status.backup, 'gets each save 5 s after the first'); };
+    const off = sync.onChange(paint);
+    paint();
+    dialog('Sync', [
+      h('label', { class: 'pill check sync-on' }, on, h('span', {}, 'Push every save', h('span', { class: 'caption block' }, 'to an aqua-sync daemon on your network'))),
+      primary.el, primaryState, backup.el, backupState, key.el,
+      h('div', { class: 'sync-buttons' },
+        h('button', { class: 'text', onclick: async () => {
+          await store();
+          const addrs = [sync.settings.primary, sync.settings.backup].filter(Boolean);
+          if (!addrs.length) { test.textContent = 'Type an address first.'; return; }
+          test.textContent = 'Checking…';
+          const lines = await Promise.all(addrs.map((a) => sync.hello(a).then((m) => `${a}: ${m}`, () => `${a}: no answer`)));
+          test.textContent = lines.join(' · ');
+        } }, 'Test'),
+        h('button', { class: 'text', onclick: async () => { await store(); await save(true); } }, 'Sync now'),
+      ),
+      test,
+    ], [['Done', async () => { await store(); off(); render(); return true; }]]);
+  }
+  sync.onChange(() => render());
+  sync.load().then(() => render());
 
   // ---------------------------------------------------------------- behaviour
   function pushBrush() {
@@ -323,6 +417,10 @@ export function createEditor(root, engine, canvas, { onExit }) {
       dipB.setAttribute('aria-label', label);
     }
     setSelected(dipB, dip);
+    const st = sync.status;
+    syncB.classList.toggle('on', !!sync.settings.on);
+    syncB.classList.toggle('failed', !!sync.settings.on && st.primary.state === 'failed' && st.backup.state !== 'done');
+    syncB.title = sync.settings.on ? 'Sync: on' : 'Sync';
     cup.hidden = !dip;
     // With the pen it is an ink well, of the pen's ink.
     const well = brushTool === Tool.Ink;
@@ -357,7 +455,8 @@ export function createEditor(root, engine, canvas, { onExit }) {
     drawGimbalIcon();
   }
 
-  async function save() {
+  /** Saves, and pushes the save to the sync daemons when sync is on (or `forceSync`). */
+  async function save(forceSync = false) {
     if (!id) return;
     // One save at a time; the latest state wins.
     while (saving) await saving;
@@ -368,6 +467,7 @@ export function createEditor(root, engine, canvas, { onExit }) {
         const files = await engine.save();
         await writePainting(target, files);
         savedRevision = rev;
+        sync.push(target, files, forceSync);
       } catch (e) {
         console.error('save failed', e);
       }
@@ -439,11 +539,13 @@ export function createEditor(root, engine, canvas, { onExit }) {
     else if (k === 'p' && !dip) selectTool(Tool.Push);
     else if (k === 'd' && dip) dipBrush();
     else if (k === 'k') selectTool(Tool.Eyedropper);
+    else if (k === 'h') setHidden(!root.classList.contains('ui-hidden'));
     else if (k === '0') view.fit(true);
     else if (k === '=' || k === '+') view.zoomBy(1.25);
     else if (k === '-') view.zoomBy(0.8);
     else if (k === 'escape') {
-      if (gimbalOpen) toggleGimbal();
+      if (root.classList.contains('ui-hidden')) setHidden(false);
+      else if (gimbalOpen) toggleGimbal();
       else if (panel) setPanel(null);
     }
   });
@@ -477,6 +579,7 @@ export function createEditor(root, engine, canvas, { onExit }) {
       gimbalOpen = false;
       gimbalHost.replaceChildren();
       setPanel(null);
+      setHidden(false);
       pushBrush();
       refresh();
     },

@@ -1,7 +1,7 @@
 # App layout guideline
 
-Aqua runs the same Rust engine on every platform (Android today, the web, and
-later iOS or desktop). Each platform builds its own UI with its own controls,
+Aqua runs the same Rust engine on every platform (Android, the web, and the
+desktop on Linux and macOS; later iOS). Each platform builds its own UI with its own controls,
 and buttons may look native to the platform. What every version keeps the same
 is where things are, what they do, and how the painting responds. Someone who
 paints on the phone should find their way around the web version without
@@ -26,7 +26,7 @@ zones.
 
 ```
 ┌──────────────────────────────────────────────┐
-│ (← ↶ ↷)                  (dry ∞ ◎ ⇪ ≣ ●)     │  top bar: two pill groups
+│ (← ↶ ↷)            (dry ∞ ◎ ⟳ ⇪ ⊘ ≣ ● ⋮)     │  top bar: two pill groups
 │                                   ┌───────┐  │
 │ ┃                                 │ panel │  │  panels drop from the top right
 │ ┃ size                            └───────┘  │
@@ -43,10 +43,24 @@ zones.
   1. Dry layer now. Only shown while the active layer is wet.
   2. Brush water: always wet (∞, the default) or dip (a cup). The choice is
      kept between sessions.
-  3. Gimbal (tip the paper).
-  4. Export.
-  5. Layers.
-  6. The current colour as a swatch, which opens the palette.
+  3. Gimbal (tip the paper). Not on the desktop, which has no tilt sensor.
+  4. Sync: where saves are pushed (see Sync below). Accent-coloured while sync
+     is on, red when the last push reached neither address.
+  5. Export.
+  6. Hide controls.
+  7. Layers.
+  8. The current colour as a swatch, which opens the palette.
+  9. ⋮, holding whichever of 2–6 don't fit.
+- **Compact top bar.** Dry, Layers, the swatch and ⋮ are always on the bar,
+  as are back, undo and redo. Items 2–6 fill the space left on the bar, in
+  that order, and the rest go in the ⋮ menu (icon and label). Under 600 px/dp
+  wide the bar buttons shrink from 44 to 40. On a phone held upright that
+  leaves room for one or two, so dip and the gimbal stay on the bar. On a
+  tablet or a wide window everything fits and ⋮ goes away.
+- **Hide controls.** Hides every control (bars, rail, dock, cup, panels), leaving
+  one dim eye button at the top right that brings them back. Painting and
+  navigating still work. Back (Android), Escape or H (keyboards) also bring
+  them back, and H hides them.
 - **Left rail.** Brush size on a log scale, then the current tool's main
   control: water for the watercolour and water brushes, bleed for ink, strength
   for the eraser and push. Rail drags are relative, so grabbing a slider never makes it
@@ -128,7 +142,19 @@ B / W / I / E / P / K pick a tool; 0 fits the painting to the screen.
   when it started. "Keep phone tilt on when closed" only appears where a tilt
   sensor exists, and it pauses while the app is in the background.
 - **Saving.** The painting is saved on leaving the editor, when the app is
-  backgrounded, and (on the web) every 30 seconds while it changes. A painting
+  backgrounded, and (on the web and desktop) every 30 seconds while it
+  changes. With sync on, Android also saves once a painting has been left
+  alone for 20 seconds.
+- **Undo** keeps at least 8 full-layer snapshots' worth of history (at least
+  1 GB), capped at a fifth of the device's memory but never below the old
+  budget of 4 snapshots / 512 MB.
+- **Sync.** The sync dialog has a switch ("Push every save"), an address, a
+  backup address, a key and Test / Sync now. Each save is pushed to the
+  address at once and to the backup address 5 seconds later; a newer save in
+  between replaces the backup's copy. Addresses are an IP or host name, with
+  the port (7717) optional. The receiving end is `aqua-sync` (sync/), which
+  keeps paintings in the desktop app's gallery folder. Sync now from the
+  desktop gallery pushes every painting. A painting
   is the same set of files everywhere: `meta.json`, `layer_<id>.bin` and
   `thumb.png`.
 - **No blinks.** The canvas, its surround and the window background are all

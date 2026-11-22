@@ -384,3 +384,48 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
   touch-action: none;
 }
 .gimbal-disc:active { cursor: grabbing; }
+
+/* ------------------------------------------------------------ hide, overflow, sync */
+
+/* Hidden controls: everything but the one button that brings them back. */
+.editor.ui-hidden .chrome, .editor.ui-hidden .gimbal-host { opacity: 0; }
+.editor.ui-hidden .chrome > *, .editor.ui-hidden .gimbal-host > * { pointer-events: none; }
+.unhide {
+  position: absolute;
+  top: calc(8px + env(safe-area-inset-top));
+  right: 8px;
+  display: none;
+  background: rgba(26, 26, 30, 0.5);
+  color: rgba(236, 234, 230, 0.7);
+}
+.editor.ui-hidden .unhide { display: inline-grid; animation: fade-in 200ms; }
+.editor.exiting .unhide { display: none; }
+.topbar .swatch.top { margin: 0 calc((var(--btn, 44px) - 32px) / 2); }
+
+.menu.more { border-radius: 16px; min-width: 190px; }
+.menu.more button { display: flex; align-items: center; gap: 14px; padding: 11px 18px; }
+.menu.more svg { flex: none; }
+
+.round.on { color: var(--accent); }
+.round.failed { color: var(--danger); }
+
+.field-row { display: block; margin-top: 12px; }
+.field-row .caption { display: block; margin-bottom: 4px; }
+.field {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--raised);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 9px 11px;
+  font: inherit;
+  font-size: 15px;
+}
+.field:focus { border-color: var(--accent); outline: none; }
+.sync-on { padding: 8px 12px; border-radius: 12px; background: var(--raised); }
+.caption.block { display: block; }
+.sync-state { min-height: 16px; margin-top: 4px; }
+.sync-state.done { color: var(--accent); }
+.sync-state.failed { color: var(--danger); }
+.sync-buttons { display: flex; gap: 4px; margin-top: 8px; }

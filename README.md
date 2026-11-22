@@ -1,6 +1,7 @@
 # Aqua
 
-A minimal watercolour and ink painting app for Android and the web. The paint
+A minimal watercolour and ink painting app for Android, the web, and the
+desktop (Linux and macOS). The paint
 is simulated on the GPU: water flows across textured paper, pigment rides along
 and settles, edges dry dark, and clear water dropped into damp paint blooms.
 
@@ -58,7 +59,12 @@ ink feathering into a wet wash, and a bloom from clear water in a damp rose wash
 - **Gallery** of saved paintings with thumbnails, duplicate, delete, and PNG
   export to `Pictures/Aqua`.
 - **Undo/redo.** Tap two fingers to undo and three to redo, or use the
-  buttons.
+  buttons. History holds at least eight full-layer snapshots' worth (1 GB or
+  more where the device has the memory).
+- **Hide controls** from the top bar (or ⋮ on narrow screens) to see just the
+  painting; one small eye button brings them back.
+- **Sync.** Each save can be pushed over the local network to `aqua-sync`, a
+  tiny daemon (below), with a backup address that gets a copy 5 seconds later.
 - **Navigation.** Pinch to zoom, pan and rotate. Once a stylus has been used,
   fingers only navigate (palm rejection). Pinch far out and let go to go back to
   the gallery: the painting shrinks into its place among the others.
@@ -193,3 +199,37 @@ web/               Web app
   www/js/          gallery, editor, canvas view and gestures, panels, gimbal, IndexedDB storage
 docs/LAYOUT.md     layout and behaviour every platform's UI follows
 ```
+
+## Desktop app
+
+`desktop/` is a native app for Linux and macOS: the same engine straight on
+wgpu (Vulkan or GL on Linux, Metal on macOS), with an [egui](https://egui.rs)
+UI drawn in the same frame and laid out like the other apps. Paintings live in
+`~/.local/share/aqua/paintings` (macOS: `~/Library/Application Support/Aqua/paintings`).
+
+```
+just desktop            # build and run
+just appimage           # Linux: desktop/target/Aqua-x86_64.AppImage
+just macos-app          # on a Mac: desktop/target/Aqua.app and Aqua.dmg
+```
+
+`.github/workflows/desktop.yml` builds the AppImage and the macOS .dmg on
+GitHub. A mouse paints at medium pressure; touch screens and pens that report
+touch force give real pressure. Wheel zooms, middle/right drag or space+drag
+pans, a trackpad pans with two fingers and zooms with ⌘/Ctrl or a pinch.
+
+## Sync daemon
+
+`sync/` is `aqua-sync`, a dependency-free daemon that receives paintings
+pushed by the apps over HTTP on port 7717 and keeps them in the desktop app's
+gallery folder, so a painting made on the phone opens on the computer.
+
+```
+just sync-daemon              # run in the foreground
+just sync-daemon --key SECRET # refuse pushes without the key
+just sync-install             # install as a systemd user service (Linux)
+```
+
+In the app, open Sync, turn on "Push every save" and enter the computer's
+address, optionally a second computer as backup and the key. The web app can
+only reach a daemon when it is itself served over http (localhost is fine).
