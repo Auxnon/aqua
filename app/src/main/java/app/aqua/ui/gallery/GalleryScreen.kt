@@ -9,6 +9,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -67,6 +69,7 @@ import app.aqua.AquaApp
 import app.aqua.data.Artwork
 import app.aqua.engine.Native
 import app.aqua.engine.PAPER_BLACK
+import app.aqua.engine.PAPER_BRIGHT
 import app.aqua.engine.setPaper
 import app.aqua.ui.Arrival
 import app.aqua.ui.rememberDisplayRotation
@@ -75,6 +78,7 @@ import app.aqua.ui.turned
 import app.aqua.ui.CARD_CORNER_DP
 import app.aqua.ui.FlyingPainting
 import app.aqua.ui.theme.AquaColors
+import app.aqua.ui.canvas.windowMetrics
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -157,7 +161,7 @@ fun GalleryScreen(onOpen: (File) -> Unit, arrival: Arrival? = null, onArrived: (
                 }
             } else {
                 LazyVerticalGrid(
-                    columns = GridCells.Adaptive(170.dp),
+                    columns = GridCells.Adaptive(if (windowMetrics().tablet) 230.dp else 170.dp),
                     contentPadding = PaddingValues(14.dp, 4.dp, 14.dp, 100.dp),
                     horizontalArrangement = Arrangement.spacedBy(14.dp),
                     verticalArrangement = Arrangement.spacedBy(18.dp),
@@ -196,14 +200,15 @@ fun GalleryScreen(onOpen: (File) -> Unit, arrival: Arrival? = null, onArrived: (
     if (creating) {
         NewCanvasDialog(
             onDismiss = { creating = false },
-            onCreate = { w, h, paper, black ->
+            onCreate = { w, h, paper, color, plain ->
                 creating = false
                 busy = true
                 scope.launch(Dispatchers.IO) {
                     val dir = app.repo.newDir()
                     // The painting is kept the way up it is now, whichever way the phone turns later.
                     Native.newCanvas(app.engine, w, h, paper, Random.nextInt(1, Int.MAX_VALUE), rotation)
-                    if (black) setPaper(app.engine, PAPER_BLACK)
+                    if (color != null) setPaper(app.engine, color)
+                    if (plain) Native.setPaperRelief(app.engine, 0f)
                     Native.save(app.engine, dir.path)
                     withContext(Dispatchers.Main) {
                         busy = false
@@ -295,7 +300,7 @@ private fun SettingsDialog(store: Settings, onDismiss: () -> Unit) {
 private data class SizePreset(val label: String, val w: Int, val h: Int)
 
 @Composable
-private fun NewCanvasDialog(onDismiss: () -> Unit, onCreate: (Int, Int, Int, Boolean) -> Unit) {
+private fun NewCanvasDialog(onDismiss: () -> Unit, onCreate: (w: Int, h: Int, paper: Int, color: Int?, plain: Boolean) -> Unit) {
     val window = LocalWindowInfo.current.containerSize
     val screen = remember(window) {
         // Screen-shaped canvas, longest side capped to keep the wet simulation light.
@@ -312,12 +317,14 @@ private fun NewCanvasDialog(onDismiss: () -> Unit, onCreate: (Int, Int, Int, Boo
     val papers = listOf("Cold press", "Hot press", "Rough")
     var size by remember { mutableStateOf(presets[0]) }
     var paper by remember { mutableStateOf(0) }
-    var black by remember { mutableStateOf(false) }
+    // null: the usual warm white.
+    var color by remember { mutableStateOf<Int?>(null) }
+    var plain by remember { mutableStateOf(false) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("New painting") },
         text = {
-            Column {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
                 Text("Size", color = AquaColors.TextDim, fontSize = 12.sp)
                 Spacer(Modifier.height(6.dp))
                 presets.forEach { p ->
@@ -333,13 +340,22 @@ private fun NewCanvasDialog(onDismiss: () -> Unit, onCreate: (Int, Int, Int, Boo
                 Text("Colour", color = AquaColors.TextDim, fontSize = 12.sp)
                 Spacer(Modifier.height(6.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Choice("White", !black) { black = false }
-                    Choice("Black", black) { black = true }
+                    Choice("Warm white", color == null) { color = null }
+                    Choice("White", color == PAPER_BRIGHT) { color = PAPER_BRIGHT }
+                    Choice("Black", color == PAPER_BLACK) { color = PAPER_BLACK }
                 }
+                Spacer(Modifier.height(12.dp))
+                Text("Look", color = AquaColors.TextDim, fontSize = 12.sp)
+                Spacer(Modifier.height(6.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Choice("Textured", !plain) { plain = false }
+                    Choice("Plain", plain) { plain = true }
+                }
+                Text("Plain hides the grain; the paint still feels it.", color = AquaColors.TextDim, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp))
                 Text("Change it any time from the paper under the layers.", color = AquaColors.TextDim, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp))
             }
         },
-        confirmButton = { TextButton(onClick = { onCreate(size.w, size.h, paper, black) }) { Text("Create") } },
+        confirmButton = { TextButton(onClick = { onCreate(size.w, size.h, paper, color, plain) }) { Text("Create") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
 }

@@ -71,6 +71,8 @@ data class LayerInfo(
 /** The usual warm white paper, and black paper (`PaperSpec::white` and `black` in the engine). */
 const val PAPER_WHITE = 0xFFF7F5EF.toInt()
 const val PAPER_BLACK = 0xFF1C1B1A.toInt()
+/** Bright white paper, for a clean, plain look. */
+const val PAPER_BRIGHT = 0xFFFFFFFF.toInt()
 
 data class CanvasInfo(
     val width: Int = 0,
@@ -87,6 +89,8 @@ data class CanvasInfo(
     val inkCharge: Float = 1f,
     /** The paper's colour (ARGB). */
     val paper: Int = PAPER_WHITE,
+    /** How much the grain shows in the bare paper, 0 (plain) to 1. */
+    val relief: Float = 1f,
     val layers: List<LayerInfo> = emptyList(),
 ) {
     companion object {
@@ -121,6 +125,7 @@ data class CanvasInfo(
                 paper = o.optJSONArray("paper")?.let {
                     android.graphics.Color.argb(1f, it.getDouble(0).toFloat(), it.getDouble(1).toFloat(), it.getDouble(2).toFloat())
                 } ?: PAPER_WHITE,
+                relief = o.optDouble("relief", 1.0).toFloat(),
                 layers = layers,
             )
         }

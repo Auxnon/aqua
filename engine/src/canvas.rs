@@ -161,12 +161,20 @@ pub struct PaperSpec {
     /// colours were added are the usual warm white.
     #[serde(default = "PaperSpec::white")]
     pub color: [f32; 3],
+    /// How strongly the grain shows in the bare paper's shading, 0 (flat, plain
+    /// paper) to 1. Only the look: the water and pigment feel the grain the same.
+    #[serde(default = "PaperSpec::full_relief")]
+    pub relief: f32,
 }
 
 impl PaperSpec {
     /// The usual warm white watercolour paper.
     pub fn white() -> [f32; 3] {
         [0.93, 0.915, 0.87]
+    }
+
+    fn full_relief() -> f32 {
+        1.0
     }
 
     /// Black paper (a little lifted, so the grain still shows).
@@ -177,9 +185,9 @@ impl PaperSpec {
     /// 0 = cold press, 1 = hot press, 2 = rough
     pub fn preset(kind: u32, seed: u32) -> Self {
         match kind {
-            1 => Self { seed, roughness: 0.15, grain: 3.0, fibre: 0.35, sizing: 0.2, color: Self::white() },
-            2 => Self { seed, roughness: 0.9, grain: 7.0, fibre: 0.6, sizing: 0.45, color: Self::white() },
-            _ => Self { seed, roughness: 0.5, grain: 4.5, fibre: 0.5, sizing: 0.3, color: Self::white() },
+            1 => Self { seed, roughness: 0.15, grain: 3.0, fibre: 0.35, sizing: 0.2, color: Self::white(), relief: 1.0 },
+            2 => Self { seed, roughness: 0.9, grain: 7.0, fibre: 0.6, sizing: 0.45, color: Self::white(), relief: 1.0 },
+            _ => Self { seed, roughness: 0.5, grain: 4.5, fibre: 0.5, sizing: 0.3, color: Self::white(), relief: 1.0 },
         }
     }
 }
@@ -1457,7 +1465,7 @@ impl Canvas {
             wet: l.map_or(0, |l| l.wet.is_some() as u32),
             first: first as u32,
             _pad: 0.0,
-            paper: [self.paper_spec.color[0], self.paper_spec.color[1], self.paper_spec.color[2], 1.0],
+            paper: [self.paper_spec.color[0], self.paper_spec.color[1], self.paper_spec.color[2], self.paper_spec.relief],
         }
     }
 
@@ -1545,6 +1553,17 @@ impl Canvas {
         self.paper_spec.color = srgb.map(|c| crate::pigment::srgb_to_linear(c).clamp(0.0, 0.98));
         self.invalidate();
         self.revision += 1;
+    }
+
+    /// How much the grain shows in the bare paper, 0 (plain) to 1; the look only.
+    pub fn set_paper_relief(&mut self, relief: f32) {
+        self.paper_spec.relief = relief.clamp(0.0, 1.0);
+        self.invalidate();
+        self.revision += 1;
+    }
+
+    pub fn paper_relief(&self) -> f32 {
+        self.paper_spec.relief
     }
 
     /// The bare paper's colour as sRGB.

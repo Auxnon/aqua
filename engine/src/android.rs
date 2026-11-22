@@ -30,6 +30,7 @@ enum Cmd {
     Brush(BrushSettings),
     Charge(u32, f32),
     PaperColor([f32; 3]),
+    PaperRelief(f32),
     Stroke(i32, Vec<InputPoint>),
     NewCanvas(u32, u32, u32, u32, u32, SyncSender<()>),
     Load(PathBuf, SyncSender<bool>),
@@ -159,6 +160,7 @@ fn handle_cmd(engine: &mut Engine, window: &mut Option<NativeWindow>, c: Cmd) ->
         Cmd::Brush(b) => engine.brush = b,
         Cmd::Charge(tool, v) => engine.set_charge(tool, v),
         Cmd::PaperColor(c) => engine.set_paper_color(c),
+        Cmd::PaperRelief(r) => engine.set_paper_relief(r),
         Cmd::Stroke(phase, pts) => engine.stroke(phase, &pts),
         Cmd::NewCanvas(w, h, kind, seed, home, reply) => {
             engine.new_canvas(w, h, kind, seed, home);
@@ -250,6 +252,7 @@ fn handle_cmd(engine: &mut Engine, window: &mut Option<NativeWindow>, c: Cmd) ->
                     "charge": engine.charge,
                     "inkCharge": engine.ink_charge,
                     "paper": c.paper_color(),
+                    "relief": c.paper_relief(),
                     "layers": c.layer_infos(),
                 })
                 .to_string(),
@@ -368,6 +371,12 @@ pub extern "system" fn Java_app_aqua_engine_Native_setCharge(_env: JNIEnv, _c: J
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_app_aqua_engine_Native_setPaperColor(_env: JNIEnv, _c: JClass, h: jlong, r: jfloat, g: jfloat, b: jfloat) {
     send(h, Cmd::PaperColor([r, g, b]));
+}
+
+/// How much the grain shows in the bare paper, 0 (plain) to 1. The look only.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_app_aqua_engine_Native_setPaperRelief(_env: JNIEnv, _c: JClass, h: jlong, relief: jfloat) {
+    send(h, Cmd::PaperRelief(relief));
 }
 
 /// phase: 0 begin, 1 move, 2 end, 3 cancel. pts: (x, y, pressure, tilt x, tilt y) in canvas pixels.

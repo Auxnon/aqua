@@ -56,6 +56,13 @@ ink feathering into a wet wash, and a bloom from clear water in a damp rose wash
   brush colour. Mixing is done in K/S space, so blue and yellow make green, and
   what you mix in the tray is what the canvas paints. The tray and the colours
   you've mixed are kept between sessions.
+- **Paper.** Cold press, hot press (smooth) or rough grain, chosen with a new
+  painting, in any colour. The grain's **texture** can be turned down to plain
+  paper, e.g. smooth hot press that looks like clean white paper: that only
+  changes how the bare paper looks, the water and pigment still feel the grain.
+- **Tablets.** On a tablet (e.g. a Galaxy Tab S) the buttons, rail sliders,
+  panels and gallery cards are larger, and a hovering S Pen shows the brush's
+  size under its tip.
 - **Gallery** of saved paintings with thumbnails, duplicate, delete, and PNG
   export to `Pictures/Aqua`.
 - **Undo/redo.** Tap two fingers to undo and three to redo, or use the
@@ -143,6 +150,19 @@ adb install app/build/outputs/apk/debug/app-debug.apk
 With [`just`](https://github.com/casey/just), `just install` does the build and
 install in one step (`just` lists the other recipes: `run`, `release`, `test`,
 `paint-test`, `brush-test`, `bench`, `logs`, `clean`).
+
+### Versions and releases
+
+Releases are git tags, `vMAJOR.MINOR[.PATCH]`. The APK's version name comes
+from `git describe` ("0.1" on the tag, "0.1-3-gabc1234" three commits after it,
+"-dirty" with uncommitted changes) and its version code grows with every tag
+and commit, so each build installs over the last. `just version` shows it.
+
+`just tag 0.2` tags the current commit (the tree must be clean), builds the
+release APK, pushes the tag and creates the GitHub release with
+`aqua-v0.2.apk` attached. Release builds use the key in `keystore.properties`
+(`storeFile`, `storePassword`, `keyAlias`, `keyPassword`; not in git) when it
+exists, and the debug key otherwise.
 
 Gradle runs on JDK 21 (`gradle/gradle-daemon-jvm.properties`). It finds an
 installed JDK 21 or downloads one.

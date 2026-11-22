@@ -30,7 +30,7 @@ import app.aqua.ui.theme.AquaColors
 
 @Composable
 fun BrushPanel(tool: Tool, params: BrushParams, onChange: (BrushParams) -> Unit, modifier: Modifier = Modifier) {
-    FloatingPanel(modifier.width(300.dp)) {
+    FloatingPanel(modifier.width(LocalMetrics.current.panel(300.dp))) {
         PanelTitle(
             when (tool) {
                 Tool.Watercolor -> "Watercolour brush"
@@ -95,7 +95,7 @@ fun BrushPanel(tool: Tool, params: BrushParams, onChange: (BrushParams) -> Unit,
 /** The eyedropper's two kinds: read the canvas as a wash, or as an exact colour. */
 @Composable
 fun PickerPanel(kind: PickKind, onChange: (PickKind) -> Unit, modifier: Modifier = Modifier) {
-    FloatingPanel(modifier.width(300.dp)) {
+    FloatingPanel(modifier.width(LocalMetrics.current.panel(300.dp))) {
         PanelTitle("Eyedropper")
         Spacer(Modifier.height(6.dp))
         PickerChoice(WashPickIcon, "Wash", "Whiter areas pick up thinner paint of a deeper pigment", kind == PickKind.Wash) { onChange(PickKind.Wash) }

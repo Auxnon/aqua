@@ -22,6 +22,24 @@ build:
 release:
     ./gradlew assembleRelease
 
+# The version a build gets now, from the latest vX.Y tag (see app/build.gradle.kts)
+version:
+    @git describe --tags --match 'v[0-9]*' --dirty 2>/dev/null || echo "no release tag yet"
+
+# Tag a release (`just tag 0.2`), build its APK and put it on the GitHub release page
+tag version:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    v="v{{version}}"
+    [[ "$v" =~ ^v[0-9]+\.[0-9]+(\.[0-9]+)?$ ]] || { echo "version is MAJOR.MINOR or MAJOR.MINOR.PATCH, e.g. 0.2"; exit 1; }
+    [ -z "$(git status --porcelain)" ] || { echo "commit or stash your changes first"; exit 1; }
+    git tag -a "$v" -m "Aqua $v"
+    ./gradlew -Djava.io.tmpdir="${TMPDIR:-/tmp}" assembleRelease
+    mkdir -p dist
+    cp app/build/outputs/apk/release/app-release.apk "dist/aqua-$v.apk"
+    git push origin "$v"
+    gh release create "$v" "dist/aqua-$v.apk" --title "Aqua $v" --generate-notes
+
 # Run the engine's unit tests on the desktop GPU
 test:
     cd engine && cargo test --release --lib

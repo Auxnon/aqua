@@ -91,8 +91,9 @@ fn paper_init(@builtin(workgroup_id) wg: vec3<u32>, @builtin(local_invocation_id
     let h = textureLoad(paper, p, 0).r;
     let hx = textureLoad(paper, min(p + vec2<i32>(1, 0), dims - 1), 0).r;
     let hy = textureLoad(paper, min(p + vec2<i32>(0, 1), dims - 1), 0).r;
-    // Raking light from the upper left.
-    let shade = 1.0 + 0.9 * ((h - hx) + (h - hy)) + 0.05 * (h - 0.5);
+    // Raking light from the upper left, as strong as the paper's relief (alpha):
+    // at 0 the paper looks plain, whatever its grain does to the water.
+    let shade = 1.0 + L.paper.a * (0.9 * ((h - hx) + (h - hy)) + 0.05 * (h - 0.5));
     let base = L.paper.rgb;
     // The added term keeps the grain visible on dark paper.
     let lit = base * shade + 0.03 * (shade - 1.0);

@@ -9,7 +9,7 @@ use aqua_engine::pigment::{self, Pigment};
 use egui::{Align2, Area, Color32, Context, CornerRadius, Frame, Id, Key, Margin, Modal, Order, RichText, Sense, Stroke, Ui, pos2, vec2};
 
 use crate::icons as ic;
-use crate::studio::{BrushP, Dialog, PAPER_BLACK, PAPER_WHITE, Panel, Screen, Studio, rail_to_size, size_to_rail};
+use crate::studio::{BrushP, Dialog, PAPER_BLACK, PAPER_BRIGHT, PAPER_WHITE, Panel, Screen, Studio, rail_to_size, size_to_rail};
 use crate::sync::PushState;
 
 pub struct Theme {
@@ -561,6 +561,8 @@ fn paper_panel(ctx: &Context, st: &mut Studio) {
     let Some(c) = st.engine.canvas.as_ref() else { return };
     let mut rgb = c.paper_color();
     let before = rgb;
+    let mut relief = c.paper_relief();
+    let relief_before = relief;
     let mut back = false;
     side_panel(ctx, "paper", |ui| {
         ui.horizontal(|ui| {
@@ -570,7 +572,7 @@ fn paper_panel(ctx: &Context, st: &mut Studio) {
             ui.label(RichText::new("Paper").size(17.0));
         });
         ui.add_space(6.0);
-        let presets = [PAPER_WHITE, [0.98, 0.95, 0.86], [0.93, 0.88, 0.78], [0.82, 0.85, 0.86], [0.55, 0.6, 0.66], [0.25, 0.3, 0.38], [0.36, 0.25, 0.2], [0.2, 0.2, 0.2], PAPER_BLACK];
+        let presets = [PAPER_WHITE, PAPER_BRIGHT, [0.98, 0.95, 0.86], [0.93, 0.88, 0.78], [0.82, 0.85, 0.86], [0.55, 0.6, 0.66], [0.25, 0.3, 0.38], [0.36, 0.25, 0.2], [0.2, 0.2, 0.2], PAPER_BLACK];
         ui.horizontal_wrapped(|ui| {
             for p in presets {
                 let (rect, r) = ui.allocate_exact_size(vec2(26.0, 26.0), Sense::click());
@@ -586,9 +588,16 @@ fn paper_panel(ctx: &Context, st: &mut Studio) {
             ui.color_edit_button_rgb(&mut rgb);
             ui.label(RichText::new("Any colour").color(THEME.text_dim));
         });
+        ui.add_space(10.0);
+        ui.label(RichText::new("Texture").size(12.0).color(THEME.text_dim));
+        ui.add(egui::Slider::new(&mut relief, 0.0..=1.0).custom_formatter(|v, _| if v < 0.01 { "plain".into() } else { format!("{:.0}%", v * 100.0) }));
+        ui.label(RichText::new("Only the look: the paint feels the grain the same.").size(11.0).color(THEME.text_dim));
     });
     if rgb != before {
         st.engine.set_paper_color(rgb);
+    }
+    if relief != relief_before {
+        st.engine.set_paper_relief(relief);
     }
     if back {
         st.panel = Panel::Layers;
@@ -700,7 +709,7 @@ fn gallery(root: &mut Ui, st: &mut Studio) {
             ui.label(RichText::new("Aqua").size(30.0).color(THEME.text));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui.add(egui::Button::new(RichText::new("New painting").color(THEME.bg)).fill(THEME.accent).corner_radius(18)).clicked() {
-                    st.dialog = Dialog::New { size: 0, paper: 0, black: false };
+                    st.dialog = Dialog::New { size: 0, paper: 0, color: 0, plain: false };
                 }
                 let (_, _, _, tint) = action_look(st, Action::Sync);
                 if ic::button(ui, ic::SYNC, 40.0, false, true, tint, "Sync").clicked() {
@@ -788,7 +797,7 @@ fn dialogs(ctx: &Context, st: &mut Studio) {
     match std::mem::replace(&mut st.dialog, Dialog::None) {
         Dialog::None => {}
         Dialog::Sync { test } => st.dialog = sync_dialog(ctx, st, test),
-        Dialog::New { size, paper, black } => st.dialog = new_dialog(ctx, st, size, paper, black),
+        Dialog::New { size, paper, color, plain } => st.dialog = new_dialog(ctx, st, size, paper, color, plain),
         Dialog::Delete(dir) => {
             let mut keep = true;
             let m = Modal::new(Id::unique("delete")).frame(card_frame().fill(THEME.panel_solid)).show(ctx, |ui| {
@@ -891,7 +900,7 @@ fn sync_dialog(ctx: &Context, st: &mut Studio, mut test: String) -> Dialog {
     if keep && !m.should_close() { Dialog::Sync { test } } else { Dialog::None }
 }
 
-fn new_dialog(ctx: &Context, st: &mut Studio, mut size: usize, mut paper: u32, mut black: bool) -> Dialog {
+fn new_dialog(ctx: &Context, st: &mut Studio, mut size: usize, mut paper: u32, mut color: u8, mut plain: bool) -> Dialog {
     let (ww, wh) = st.window;
     let k = (2400.0 / ww.max(wh)).min(1.0);
     let window = ((ww * k) as u32).max(512);
@@ -917,10 +926,17 @@ fn new_dialog(ctx: &Context, st: &mut Studio, mut size: usize, mut paper: u32, m
         ui.add_space(6.0);
         ui.label(RichText::new("Colour").size(12.0).color(THEME.text_dim));
         ui.horizontal(|ui| {
-            ui.selectable_value(&mut black, false, "White");
-            ui.selectable_value(&mut black, true, "Black");
+            ui.selectable_value(&mut color, 0, "Warm white");
+            ui.selectable_value(&mut color, 1, "White");
+            ui.selectable_value(&mut color, 2, "Black");
         });
-        ui.label(RichText::new("Change it any time from the paper under the layers.").size(11.0).color(THEME.text_dim));
+        ui.add_space(6.0);
+        ui.label(RichText::new("Look").size(12.0).color(THEME.text_dim));
+        ui.horizontal(|ui| {
+            ui.selectable_value(&mut plain, false, "Textured");
+            ui.selectable_value(&mut plain, true, "Plain");
+        });
+        ui.label(RichText::new("Plain hides the grain; the paint still feels it. Change either any time from the paper under the layers.").size(11.0).color(THEME.text_dim));
         ui.add_space(10.0);
         ui.horizontal(|ui| {
             if ui.button("Cancel").clicked() {
@@ -933,8 +949,8 @@ fn new_dialog(ctx: &Context, st: &mut Studio, mut size: usize, mut paper: u32, m
     });
     if create {
         let (_, w, h) = sizes[size];
-        st.create(w, h, paper, black);
+        st.create(w, h, paper, color, plain);
         return Dialog::None;
     }
-    if keep && !m.should_close() { Dialog::New { size, paper, black } } else { Dialog::None }
+    if keep && !m.should_close() { Dialog::New { size, paper, color, plain } } else { Dialog::None }
 }

@@ -53,6 +53,8 @@ class CanvasSurfaceView(context: Context, private val engine: Long) : SurfaceVie
     var onPenEraser: (Boolean) -> Unit = {}
     /** True while a pinch is far enough out that letting go would leave for the gallery. */
     var onOverviewHint: (Boolean) -> Unit = {}
+    /** A pen hovering: (x, y in view pixels, view pixels per canvas pixel), or null once it leaves. */
+    var onHover: (FloatArray?) -> Unit = {}
     var onOverview: (CanvasFrame) -> Unit = {}
     /** The screen-space tilt after the device turned, so the paper stays tipped the same way. */
     var onTiltTurned: (Float, Float) -> Unit = { _, _ -> }
@@ -402,6 +404,20 @@ class CanvasSurfaceView(context: Context, private val engine: Long) : SurfaceVie
         val zoom = hypot(e.getX(1) - e.getX(0), e.getY(1) - e.getY(0)) / swipeDist
         val up = swipeY - cy
         return up > height * SWIPE_DISTANCE && abs(cx - swipeX) < up * 0.6f && zoom in 0.75f..1.33f
+    }
+
+    override fun onHoverEvent(e: MotionEvent): Boolean {
+        val tool = e.getToolType(0)
+        if (tool != MotionEvent.TOOL_TYPE_STYLUS && tool != MotionEvent.TOOL_TYPE_ERASER) return super.onHoverEvent(e)
+        when (e.actionMasked) {
+            MotionEvent.ACTION_HOVER_ENTER, MotionEvent.ACTION_HOVER_MOVE -> {
+                // Turned round to the eraser end: the eraser's size, before the pen touches.
+                onPenEraser(tool == MotionEvent.TOOL_TYPE_ERASER)
+                onHover(floatArrayOf(e.x, e.y, scale()))
+            }
+            else -> onHover(null)
+        }
+        return true
     }
 
     @SuppressLint("ClickableViewAccessibility")

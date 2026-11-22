@@ -43,7 +43,9 @@ import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material.icons.outlined.WaterDrop
 import androidx.compose.material3.Text
+import androidx.compose.foundation.Canvas
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -59,6 +61,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -142,6 +145,10 @@ fun CanvasScreen(dir: File, onExit: (Arrival?) -> Unit) {
     val syncStatus by app.sync.status.collectAsState()
     // The revision last saved, so sync only pushes what changed.
     var savedRevision by remember { mutableStateOf<Long?>(null) }
+    // Where a pen hovers over the painting (window pixels) and the view's scale,
+    // to outline the brush there; null when no pen is near the screen.
+    var hover by remember { mutableStateOf<FloatArray?>(null) }
+    val metrics = windowMetrics()
     // The controls fade away while pinching out to the gallery and while leaving.
     val chrome by animateFloatAsState(if (exiting || (overviewHint && pinchToGallery)) 0f else 1f, label = "chrome")
 
@@ -291,6 +298,7 @@ fun CanvasScreen(dir: File, onExit: (Arrival?) -> Unit) {
         onDispose { lifecycle.removeObserver(obs) }
     }
 
+    CompositionLocalProvider(LocalMetrics provides metrics) {
     Box(Modifier.fillMaxSize().background(AquaColors.Background)) {
         AndroidView(
             modifier = Modifier.fillMaxSize(),
@@ -300,6 +308,7 @@ fun CanvasScreen(dir: File, onExit: (Arrival?) -> Unit) {
                     onUndo = { Native.undo(engine); refresh() }
                     onRedo = { Native.redo(engine); refresh() }
                     onOverviewHint = { overviewHint = it }
+                    onHover = { hover = it }
                     pinchOutToGallery = pinchToGallery
                     onOverview = { leave(it) }
                     onTiltTurned = { x, y ->
@@ -325,11 +334,24 @@ fun CanvasScreen(dir: File, onExit: (Arrival?) -> Unit) {
             },
         )
 
+        // The brush's full-pressure size under a hovering pen (an S Pen, say).
+        // Read only while drawing, so a moving pen redraws this and nothing else.
+        if (tool != Tool.Eyedropper && !exiting) {
+            val size = params[strokeTool()]!!.size
+            Canvas(Modifier.fillMaxSize()) {
+                val hoverAt = hover ?: return@Canvas
+                val r = (size * hoverAt[2]).coerceAtLeast(2f)
+                val c = Offset(hoverAt[0], hoverAt[1])
+                drawCircle(Color.Black.copy(alpha = 0.35f), r + 1f, c, style = Stroke(1.5f))
+                drawCircle(Color.White.copy(alpha = 0.8f), r, c, style = Stroke(1f))
+            }
+        }
+
         AnimatedVisibility(!hidden, enter = fadeIn(), exit = fadeOut()) {
         Box(Modifier.fillMaxSize().graphicsLayer { alpha = chrome }) {
             // Top bar. Actions that don't fit the screen's width go in the ⋮ menu.
             BoxWithConstraints(Modifier.fillMaxWidth().statusBarsPadding()) {
-                val btn = if (maxWidth < 600.dp) 40.dp else 44.dp
+                val btn = if (metrics.tablet) metrics.bar else if (maxWidth < 600.dp) 40.dp else 44.dp
                 val actions = listOf(
                     iconAction(
                         if (dip) CupIcon else Icons.Outlined.AllInclusive,
@@ -404,12 +426,12 @@ fun CanvasScreen(dir: File, onExit: (Arrival?) -> Unit) {
                     .padding(vertical = 10.dp, horizontal = 2.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                VerticalRailSlider(sizeToRail(bp.size), { params[brushTool] = bp.copy(size = railToSize(it)) }, label = "${bp.size.toInt()}")
+                VerticalRailSlider(sizeToRail(bp.size), { params[brushTool] = bp.copy(size = railToSize(it)) }, height = metrics.railSize, label = "${bp.size.toInt()}")
                 Spacer(Modifier.size(14.dp))
                 when (brushTool) {
-                    Tool.Watercolor, Tool.Water -> VerticalRailSlider(bp.water, { params[brushTool] = bp.copy(water = it) }, height = 120.dp, label = "water")
-                    Tool.Ink -> VerticalRailSlider(bp.bleed, { params[brushTool] = bp.copy(bleed = it) }, height = 120.dp, label = "bleed")
-                    Tool.Eraser, Tool.Push -> VerticalRailSlider(bp.strength, { params[brushTool] = bp.copy(strength = it) }, height = 120.dp, label = "strength")
+                    Tool.Watercolor, Tool.Water -> VerticalRailSlider(bp.water, { params[brushTool] = bp.copy(water = it) }, height = metrics.railSecond, label = "water")
+                    Tool.Ink -> VerticalRailSlider(bp.bleed, { params[brushTool] = bp.copy(bleed = it) }, height = metrics.railSecond, label = "bleed")
+                    Tool.Eraser, Tool.Push -> VerticalRailSlider(bp.strength, { params[brushTool] = bp.copy(strength = it) }, height = metrics.railSecond, label = "strength")
                     Tool.Eyedropper -> {}
                 }
             }
@@ -425,12 +447,12 @@ fun CanvasScreen(dir: File, onExit: (Arrival?) -> Unit) {
                     .padding(horizontal = 8.dp, vertical = 4.dp),
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                RoundButton(Icons.Outlined.Brush, "Watercolour", selected = tool == Tool.Watercolor, size = 48.dp) { selectTool(Tool.Watercolor) }
-                if (!dip) RoundButton(Icons.Outlined.WaterDrop, "Clear water", selected = tool == Tool.Water, size = 48.dp) { selectTool(Tool.Water) }
-                RoundButton(Icons.Outlined.HistoryEdu, "Ink", selected = tool == Tool.Ink, size = 48.dp) { selectTool(Tool.Ink) }
-                RoundButton(EraserIcon, "Eraser", selected = tool == Tool.Eraser || penEraser, size = 48.dp) { selectTool(Tool.Eraser) }
-                if (!dip) RoundButton(PushIcon, "Push", selected = tool == Tool.Push, size = 48.dp) { selectTool(Tool.Push) }
-                RoundButton(if (pickKind == PickKind.Wash) WashPickIcon else Icons.Outlined.Colorize, "Eyedropper", selected = tool == Tool.Eyedropper, size = 48.dp) { selectTool(Tool.Eyedropper) }
+                RoundButton(Icons.Outlined.Brush, "Watercolour", selected = tool == Tool.Watercolor, size = metrics.dock) { selectTool(Tool.Watercolor) }
+                if (!dip) RoundButton(Icons.Outlined.WaterDrop, "Clear water", selected = tool == Tool.Water, size = metrics.dock) { selectTool(Tool.Water) }
+                RoundButton(Icons.Outlined.HistoryEdu, "Ink", selected = tool == Tool.Ink, size = metrics.dock) { selectTool(Tool.Ink) }
+                RoundButton(EraserIcon, "Eraser", selected = tool == Tool.Eraser || penEraser, size = metrics.dock) { selectTool(Tool.Eraser) }
+                if (!dip) RoundButton(PushIcon, "Push", selected = tool == Tool.Push, size = metrics.dock) { selectTool(Tool.Push) }
+                RoundButton(if (pickKind == PickKind.Wash) WashPickIcon else Icons.Outlined.Colorize, "Eyedropper", selected = tool == Tool.Eyedropper, size = metrics.dock) { selectTool(Tool.Eyedropper) }
             }
 
             AnimatedVisibility(
@@ -441,24 +463,24 @@ fun CanvasScreen(dir: File, onExit: (Arrival?) -> Unit) {
             ) {
                 // With the pen it is an ink well, of the pen's ink.
                 if (brushTool == Tool.Ink) {
-                    WaterCup(info.inkCharge, { dipBrush() }, ink = Color(ink.masstoneArgb))
+                    WaterCup(info.inkCharge, { dipBrush() }, ink = Color(ink.masstoneArgb), size = metrics.cup)
                 } else {
-                    WaterCup(info.charge ?: 1f, { dipBrush() })
+                    WaterCup(info.charge ?: 1f, { dipBrush() }, size = metrics.cup)
                 }
             }
 
             // Panels.
-            val panelMod = Modifier.statusBarsPadding().padding(top = 56.dp, end = 10.dp)
+            val panelMod = Modifier.statusBarsPadding().padding(top = metrics.bar + 12.dp, end = 10.dp)
             when (panel) {
                 Panel.Layers -> LayersPanel(engine, info, { refresh() }, panelMod.align(Alignment.TopEnd))
                 Panel.Palette -> PalettePanel(color, { setColor(it) }, panelMod.align(Alignment.TopEnd))
                 Panel.Brush -> BrushPanel(
                     brushTool, bp, { params[brushTool] = it },
-                    Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 80.dp),
+                    Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = metrics.dock + 32.dp),
                 )
                 Panel.Picker -> PickerPanel(
                     pickKind, { pickKind = it; app.settings.pickKind = it; panel = Panel.None },
-                    Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 80.dp),
+                    Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = metrics.dock + 32.dp),
                 )
                 Panel.None -> {}
             }
@@ -510,6 +532,7 @@ fun CanvasScreen(dir: File, onExit: (Arrival?) -> Unit) {
                 modifier = Modifier.clip(RoundedCornerShape(16.dp)).background(AquaColors.Panel).padding(horizontal = 16.dp, vertical = 8.dp),
             )
         }
+    }
     }
 }
 

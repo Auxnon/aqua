@@ -12,3 +12,7 @@ web/target/
 web/www/pkg/
 desktop/target/
 sync/target/
+dist/
+keystore.properties
+*.jks
+*.keystore

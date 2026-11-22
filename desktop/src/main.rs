@@ -303,7 +303,9 @@ fn redraw(g: &mut Gfx) -> Option<Instant> {
 
 /// `aqua --demo`: a new painting with a few strokes on it, to see that it all works.
 fn demo(st: &mut Studio) {
-    st.create(1600, 1100, 0, false);
+    // `--plain`: smooth hot press that looks like plain white paper.
+    let plain = std::env::args().any(|a| a == "--plain");
+    st.create(1600, 1100, plain as u32, plain as u8, plain);
     let (w, h) = st.window;
     for k in 0..3 {
         let y = h * (0.35 + 0.15 * k as f32);

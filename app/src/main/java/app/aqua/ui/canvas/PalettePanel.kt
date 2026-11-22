@@ -124,7 +124,7 @@ fun PalettePanel(current: Pigment, onPick: (Pigment) -> Unit, modifier: Modifier
         store.save(swatches)
     }
 
-    FloatingPanel(modifier.width(320.dp)) {
+    FloatingPanel(modifier.width(LocalMetrics.current.panel(320.dp))) {
         PanelTitle("Palette")
         Spacer(Modifier.height(8.dp))
         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {

@@ -3,6 +3,7 @@
 // card's menu (right-click or long-press). A painting coming back from the
 // editor flies from where the canvas was into its card.
 
+import { PAPER_BLACK, PAPER_BRIGHT } from './engine.js';
 import { I } from './icons.js';
 import { deletePainting, duplicatePainting, getValue, listPaintings, setValue } from './store.js';
 import { h, icon, roundButton, screenTurn } from './ui.js';
@@ -134,20 +135,25 @@ export function createGallery(root, { onOpen, onCreate }) {
     const papers = ['Cold press', 'Hot press', 'Rough'];
     let size = presets[0];
     let paper = 0;
-    let black = false;
+    // null: the usual warm white.
+    let color = null;
+    let plain = false;
     const colourRow = h('div', { class: 'choices' });
+    const lookRow = h('div', { class: 'choices' });
     const sizes = h('div', { class: 'choices column' });
     const paperRow = h('div', { class: 'choices' });
     const draw = () => {
       sizes.replaceChildren(...presets.map((p) => h('button', { class: `chip${p === size ? ' on' : ''}`, onclick: () => { size = p; draw(); } }, `${p[0]}  ·  ${p[1]}×${p[2]}`)));
       paperRow.replaceChildren(...papers.map((name, i) => h('button', { class: `chip${i === paper ? ' on' : ''}`, onclick: () => { paper = i; draw(); } }, name)));
-      colourRow.replaceChildren(...[['White', false], ['Black', true]].map(([name, b]) => h('button', { class: `chip${b === black ? ' on' : ''}`, onclick: () => { black = b; draw(); } }, name)));
+      colourRow.replaceChildren(...[['Warm white', null], ['White', PAPER_BRIGHT], ['Black', PAPER_BLACK]].map(([name, c]) => h('button', { class: `chip${c === color ? ' on' : ''}`, onclick: () => { color = c; draw(); } }, name)));
+      lookRow.replaceChildren(...[['Textured', false], ['Plain', true]].map(([name, p]) => h('button', { class: `chip${p === plain ? ' on' : ''}`, onclick: () => { plain = p; draw(); } }, name)));
     };
     draw();
     dialog('New painting', [h('div', { class: 'caption' }, 'Size'), sizes, h('div', { class: 'caption' }, 'Paper'), paperRow,
-      h('div', { class: 'caption' }, 'Colour'), colourRow, h('div', { class: 'caption dim' }, 'Change it any time from the paper under the layers.')], [
+      h('div', { class: 'caption' }, 'Colour'), colourRow,
+      h('div', { class: 'caption' }, 'Look'), lookRow, h('div', { class: 'caption dim' }, 'Plain hides the grain; the paint still feels it. Change either any time from the paper under the layers.')], [
       ['Cancel', () => true],
-      ['Create', async () => { await onCreate(size[1], size[2], paper, black); return true; }],
+      ['Create', async () => { await onCreate(size[1], size[2], paper, color, plain); return true; }],
     ]);
   }
 

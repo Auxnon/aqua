@@ -7,6 +7,8 @@ import init, { AquaEngine, AquaPalette, pigment_from_rgb, pigment_to_rgb, preset
 /** The usual warm white paper and black paper, as sRGB (`PaperSpec::white` and `black` in the engine). */
 export const PAPER_WHITE = [0.968, 0.961, 0.937];
 export const PAPER_BLACK = [0.11, 0.106, 0.102];
+/** Bright white paper, for a clean, plain look. */
+export const PAPER_BRIGHT = [1, 1, 1];
 
 export { AquaPalette };
 
@@ -62,6 +64,8 @@ export class Engine {
   setCharge(tool, v) { this.raw.set_charge(tool, v); this.kick(); }
   /** Recolours the paper (sRGB, 0..1). */
   setPaperColor([r, g, b]) { this.raw.set_paper_color(r, g, b); this.kick(); }
+  /** How much the grain shows in the bare paper, 0 (plain) to 1. The look only: the water feels it the same. */
+  setPaperRelief(v) { this.raw.set_paper_relief(v); this.kick(); }
   stroke(phase, pts) { this.raw.stroke(phase, pts); this.kick(); }
   newCanvas(w, h, paper, seed, home) { this.raw.new_canvas(w, h, paper, seed, home); this.kick(); }
   load(files) { this.raw.load(files); this.kick(); }

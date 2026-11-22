@@ -1,7 +1,7 @@
 // The floating panels: brush settings, layers and the mixing palette. Same
 // contents as the Android BrushPanel, LayersPanel and PalettePanel.
 
-import { AquaPalette, LayerOp, PAPER_BLACK, PAPER_WHITE, Pigment, Tool, presetPigments } from './engine.js';
+import { AquaPalette, LayerOp, PAPER_BLACK, PAPER_BRIGHT, PAPER_WHITE, Pigment, Tool, presetPigments } from './engine.js';
 import { I } from './icons.js';
 import { getValue, setValue } from './store.js';
 import { clamp, h, icon, labeledSlider, roundButton } from './ui.js';
@@ -109,7 +109,7 @@ export function layersPanel(engine, onChanged) {
     if (paperOpen) {
       if (propsFor !== 'paper') {
         propsFor = 'paper';
-        props.replaceChildren(paperEditor(paper, (c) => { engine.setPaperColor(c); onChanged(); }));
+        props.replaceChildren(paperEditor(paper, info.relief ?? 1, (c) => { engine.setPaperColor(c); onChanged(); }, (v) => { engine.setPaperRelief(v); onChanged(); }));
       }
       return;
     }
@@ -143,7 +143,7 @@ export function layersPanel(engine, onChanged) {
 // ------------------------------------------------------------------ paper
 
 /** Papers to start from: the usual warm white through toned papers to black. */
-const PAPERS = [PAPER_WHITE, [1, 1, 1], [0.953, 0.902, 0.784], [0.788, 0.69, 0.549], [0.659, 0.518, 0.384], [0.616, 0.651, 0.659], [0.486, 0.561, 0.651], [0.2, 0.212, 0.231], PAPER_BLACK];
+const PAPERS = [PAPER_WHITE, PAPER_BRIGHT, [0.953, 0.902, 0.784], [0.788, 0.69, 0.549], [0.659, 0.518, 0.384], [0.616, 0.651, 0.659], [0.486, 0.561, 0.651], [0.2, 0.212, 0.231], PAPER_BLACK];
 
 const rgbCss = (c) => `rgb(${c.map((v) => Math.round(clamp(v, 0, 1) * 255)).join(' ')})`;
 
@@ -163,8 +163,11 @@ function fromHsv([hue, s, v]) {
 /**
  * The paper's colour: the background under every layer. Watercolour is
  * transparent, so on dark paper it shows faintly; light ink shows best there.
+ * `relief` is how much the grain shows in the bare paper; the paint still
+ * feels the grain at 0, it just isn't drawn.
  */
-function paperEditor(current, onChange) {
+function paperEditor(current, relief, onChange, onRelief) {
+  const texture = labeledSlider('Texture', relief, onRelief, { format: (v) => (v < 0.01 ? 'plain' : `${Math.round(v * 100)}%`) });
   let hsv = toHsv(current);
   const sliders = h('div');
   const setSliders = () => sliders.replaceChildren(
@@ -179,7 +182,7 @@ function paperEditor(current, onChange) {
     onclick: () => { hsv = toHsv(c); setSliders(); onChange(c); },
   })));
   setSliders();
-  return h('div', {}, swatches, sliders);
+  return h('div', {}, swatches, sliders, texture);
 }
 
 // ------------------------------------------------------------------ palette

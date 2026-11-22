@@ -15,12 +15,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import app.aqua.engine.PAPER_BLACK
+import app.aqua.engine.PAPER_BRIGHT
 import app.aqua.engine.PAPER_WHITE
 
 /** Papers to start from: the usual warm white through toned papers to black. */
 private val PAPERS = listOf(
     PAPER_WHITE,
-    0xFFFFFFFF.toInt(), // bright white
+    PAPER_BRIGHT,
     0xFFF3E6C8.toInt(), // cream
     0xFFC9B08C.toInt(), // tan
     0xFFA88462.toInt(), // kraft
@@ -33,9 +34,12 @@ private val PAPERS = listOf(
 /**
  * The paper's colour: the background under every layer. Watercolour is
  * transparent, so on dark paper it shows faintly; light ink shows best there.
+ * [relief] is how much the grain shows in the bare paper; the paint still
+ * feels the grain at 0, it just isn't drawn.
  */
 @Composable
-fun PaperColorEditor(argb: Int, onChange: (Int) -> Unit) {
+fun PaperColorEditor(argb: Int, relief: Float, onChange: (Int) -> Unit, onRelief: (Float) -> Unit) {
+    var texture by remember { mutableStateOf(relief) }
     // Kept locally so the sliders drag smoothly between engine round trips.
     var hsv by remember { mutableStateOf(toHsv(argb)) }
     fun set(h: FloatArray) {
@@ -55,6 +59,7 @@ fun PaperColorEditor(argb: Int, onChange: (Int) -> Unit) {
         LabeledSlider("Hue", hsv[0] / 360f, { set(floatArrayOf(it * 360f, hsv[1], hsv[2])) }, format = { "${(it * 360).toInt()}°" })
         LabeledSlider("Tone", hsv[1], { set(floatArrayOf(hsv[0], it, hsv[2])) })
         LabeledSlider("Lightness", hsv[2], { set(floatArrayOf(hsv[0], hsv[1], it)) })
+        LabeledSlider("Texture", texture, { texture = it; onRelief(it) }, format = { if (it < 0.01f) "plain" else "${(it * 100).toInt()}%" })
     }
 }
 

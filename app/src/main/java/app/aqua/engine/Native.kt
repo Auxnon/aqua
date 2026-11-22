@@ -31,6 +31,9 @@ object Native {
     /** Recolours the paper of the open painting (sRGB, 0..1). */
     @JvmStatic external fun setPaperColor(handle: Long, r: Float, g: Float, b: Float)
 
+    /** How much the grain shows in the bare paper, 0 (plain) to 1. The look only: the water feels it the same. */
+    @JvmStatic external fun setPaperRelief(handle: Long, relief: Float)
+
     /** phase: 0 begin, 1 move, 2 end, 3 cancel; points are (x, y, pressure) in canvas pixels. */
     @JvmStatic external fun stroke(handle: Long, phase: Int, points: FloatArray)
 

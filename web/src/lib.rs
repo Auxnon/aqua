@@ -74,6 +74,11 @@ impl AquaEngine {
         self.engine.borrow_mut().set_charge(tool, v);
     }
 
+    /// How much the grain shows in the bare paper, 0 (plain) to 1. The look only.
+    pub fn set_paper_relief(&self, relief: f32) {
+        self.engine.borrow_mut().set_paper_relief(relief);
+    }
+
     /// Recolours the paper (sRGB, 0..1).
     pub fn set_paper_color(&self, r: f32, g: f32, b: f32) {
         self.engine.borrow_mut().set_paper_color([r, g, b]);
@@ -207,6 +212,7 @@ impl AquaEngine {
                 "charge": e.charge,
                 "inkCharge": e.ink_charge,
                 "paper": c.paper_color(),
+                "relief": c.paper_relief(),
                 "layers": c.layer_infos(),
             })
             .to_string(),

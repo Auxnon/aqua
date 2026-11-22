@@ -18,6 +18,8 @@ pub const MAX_BRUSH: f32 = 300.0;
 /// The usual warm white paper and black paper, as sRGB (`PaperSpec::white` and `black`).
 pub const PAPER_WHITE: [f32; 3] = [0.968, 0.961, 0.937];
 pub const PAPER_BLACK: [f32; 3] = [0.11, 0.106, 0.102];
+/// Bright white paper, for a clean, plain look.
+pub const PAPER_BRIGHT: [f32; 3] = [1.0, 1.0, 1.0];
 /// Saves this often while painting, as well as when leaving or closing.
 const AUTOSAVE: Duration = Duration::from_secs(30);
 
@@ -76,7 +78,8 @@ pub enum Panel {
 pub enum Dialog {
     None,
     Sync { test: String },
-    New { size: usize, paper: u32, black: bool },
+    /// `color`: 0 warm white, 1 bright white, 2 black. `plain`: the grain isn't drawn.
+    New { size: usize, paper: u32, color: u8, plain: bool },
     Delete(PathBuf),
 }
 
@@ -342,11 +345,16 @@ impl Studio {
         }
     }
 
-    pub fn create(&mut self, w: u32, h: u32, paper: u32, black: bool) {
+    pub fn create(&mut self, w: u32, h: u32, paper: u32, color: u8, plain: bool) {
         let seed = 1 + (SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default().subsec_nanos() % 0x7fff_fffe);
         self.engine.new_canvas(w, h, paper, seed, 0);
-        if black {
-            self.engine.set_paper_color(PAPER_BLACK);
+        match color {
+            1 => self.engine.set_paper_color(PAPER_BRIGHT),
+            2 => self.engine.set_paper_color(PAPER_BLACK),
+            _ => {}
+        }
+        if plain {
+            self.engine.set_paper_relief(0.0);
         }
         let dir = self.store.new_dir();
         self.enter(dir);

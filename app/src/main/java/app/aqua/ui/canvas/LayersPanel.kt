@@ -55,12 +55,12 @@ fun LayersPanel(engine: Long, info: CanvasInfo, onChanged: () -> Unit, modifier:
     val n = info.layers.size
     // The paper is shown as the bottom of the stack; selecting it edits its colour.
     var paperOpen by remember { mutableStateOf(false) }
-    FloatingPanel(modifier.width(300.dp)) {
+    FloatingPanel(modifier.width(LocalMetrics.current.panel(300.dp))) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             PanelTitle("Layers", Modifier.weight(1f))
             RoundButton(Icons.Outlined.Add, "Add layer", size = 36.dp, enabled = n < 24) { op(LayerOp.ADD, info.active) }
         }
-        LazyColumn(Modifier.heightIn(max = 260.dp).padding(vertical = 6.dp)) {
+        LazyColumn(Modifier.heightIn(max = LocalMetrics.current.layerList).padding(vertical = 6.dp)) {
             // Top of the stack first, like every painting app.
             itemsIndexed(info.layers.asReversed(), key = { _, l -> l.id }) { ri, layer ->
                 val index = n - 1 - ri
@@ -114,7 +114,12 @@ fun LayersPanel(engine: Long, info: CanvasInfo, onChanged: () -> Unit, modifier:
         if (paperOpen) {
             HorizontalDivider(color = AquaColors.Line)
             Spacer(Modifier.size(8.dp))
-            PaperColorEditor(info.paper) { setPaper(engine, it); onChanged() }
+            PaperColorEditor(
+                info.paper,
+                info.relief,
+                onChange = { setPaper(engine, it); onChanged() },
+                onRelief = { Native.setPaperRelief(engine, it); onChanged() },
+            )
             return@FloatingPanel
         }
         val layer = info.layers.getOrNull(info.active) ?: return@FloatingPanel

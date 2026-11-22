@@ -185,6 +185,14 @@ impl Engine {
         }
     }
 
+    /// How much the grain shows in the bare paper, 0 (plain) to 1; the look only.
+    pub fn set_paper_relief(&mut self, relief: f32) {
+        if let Some(c) = self.canvas.as_mut() {
+            c.set_paper_relief(relief);
+            self.needs_present = true;
+        }
+    }
+
     /// Recolours the bare paper (sRGB, 0..1).
     pub fn set_paper_color(&mut self, rgb: [f32; 3]) {
         if let Some(c) = self.canvas.as_mut() {
